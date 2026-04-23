@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統 完整最終版</title>
+<title>拍賣系統 最終穩定版</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -40,7 +40,7 @@ input{
   width:80%;
 }
 
-/* 🔥 出價動畫（你要的） */
+/* 🔥 出價動畫 */
 #bidEffect{
   position:fixed;
   top:50%;
@@ -67,10 +67,9 @@ input{
   display:block;
   font-size:50px;
   color:#ffd700;
-  margin-top:10px;
 }
 
-/* 得標動畫 */
+/* 🔥 得標動畫 */
 #winEffect{
   position:fixed;
   top:40%;
@@ -80,7 +79,6 @@ input{
   color:gold;
   opacity:0;
   transition:.3s;
-  text-shadow:0 0 20px gold;
 }
 #winEffect.show{
   opacity:1;
@@ -225,12 +223,9 @@ setInterval(()=>{
   }
 },1000);
 
-// 🔥 出價動畫（大字）
+// 出價動畫
 function showBid(name,price){
-  bidEffect.innerHTML=`
-    🔥 ${name} 搶標成功！
-    <span class="money">$${price}</span>
-  `;
+  bidEffect.innerHTML=`🔥 ${name} 搶標成功！<span class="money">$${price}</span>`;
   bidEffect.classList.add("show");
   setTimeout(()=>bidEffect.classList.remove("show"),1000);
 }
@@ -288,11 +283,21 @@ function finish(){
 
       showWin(`🎉 ${d.name} 得標 ${d.price}`);
 
+      // 🔥 正確刪法（用時間）
       db.ref("history").once("value").then(s=>{
-        const keys=Object.keys(s.val()||{});
-        if(keys.length>10){
-          keys.sort().slice(0,keys.length-10)
-          .forEach(k=>db.ref("history/"+k).remove());
+        const data=s.val();
+        if(!data)return;
+
+        const arr=Object.entries(data).map(([k,v])=>({
+          key:k,
+          time:v.time
+        }));
+
+        arr.sort((a,b)=>a.time-b.time);
+
+        if(arr.length>10){
+          arr.slice(0,arr.length-10)
+          .forEach(x=>db.ref("history/"+x.key).remove());
         }
       });
     }
@@ -319,7 +324,7 @@ function finish(){
   });
 }
 
-// 歷史
+// 歷史顯示
 db.ref("history").on("value",snap=>{
   const data=snap.val();
   if(!data){
