@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（最終穩定版）</title>
+<title>拍賣系統（穩定10筆版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -15,41 +15,28 @@ body{
   text-align:center;
   background:url("bg.png") no-repeat center/cover fixed;
 }
-body::before{
-  content:"";
-  position:fixed;
-  width:100%;height:100%;
-  background:rgba(0,0,0,0.6);
-  z-index:-1;
-}
 .box{
-  background:rgba(255,255,255,0.1);
-  backdrop-filter:blur(10px);
-  color:white;
+  background:rgba(0,0,0,0.6);
+  color:#fff;
   padding:20px;
   margin:20px auto;
   width:340px;
   border-radius:15px;
 }
 button{
-  padding:10px 20px;
+  padding:10px;
   border:none;
   border-radius:20px;
-  background:linear-gradient(45deg,#00f0ff,#7a00ff);
-  color:white;
+  background:#00bfff;
+  color:#fff;
 }
-input{padding:8px;margin:5px}
-
-/* 搶標動畫 */
 #winEffect{
   position:fixed;
   top:40%;
   left:50%;
   transform:translate(-50%,-50%) scale(0.5);
-  color:#fff;
-  font-size:34px;
-  font-weight:bold;
-  text-shadow:0 0 20px gold;
+  font-size:32px;
+  color:gold;
   opacity:0;
   transition:.3s;
 }
@@ -66,9 +53,9 @@ input{padding:8px;margin:5px}
   <h2 id="item">拍賣商品</h2>
   <p>最高價：<span id="price">0</span></p>
   <p>出價者：<span id="name">無</span></p>
-  <p>剩餘時間：<span id="time">0</span> 秒</p>
+  <p>剩餘時間：<span id="time">0</span></p>
 
-  <button onclick="login()">Google登入</button>
+  <button onclick="login()">登入</button>
   <p id="user"></p>
 
   <input id="bidInput" type="number">
@@ -76,21 +63,8 @@ input{padding:8px;margin:5px}
 </div>
 
 <div class="box">
-  <h3>得標紀錄（顯示5筆）</h3>
+  <h3>得標紀錄（10筆）</h3>
   <div id="history"></div>
-</div>
-
-<div class="box">
-  <h3>管理員登入</h3>
-  <input id="adminPwd" type="password">
-  <button onclick="adminLogin()">登入</button>
-</div>
-
-<div class="box" id="adminPanel" style="display:none;">
-  <h3>管理員後台</h3>
-  <div id="itemsEditor"></div>
-  <button onclick="saveItems()">儲存商品</button>
-  <button onclick="startAll()">開始5連拍</button>
 </div>
 
 <div id="winEffect"></div>
@@ -98,84 +72,71 @@ input{padding:8px;margin:5px}
 <script>
 
 // Firebase
-var firebaseConfig={
+var config={
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
   databaseURL:"https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:"auction-app-e04f8"
 };
-firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(config);
 var db=firebase.database();
-
-const ADMIN_PASSWORD="800430";
-let isAdmin=false;
 
 // 登入
 function login(){
   firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
 firebase.auth().onAuthStateChanged(u=>{
-  if(u) user.innerText="👤 "+u.displayName;
+  if(u) user.innerText=u.displayName;
 });
 
-// 管理員
-function adminLogin(){
-  if(adminPwd.value===ADMIN_PASSWORD){
-    isAdmin=true;
-    adminPanel.style.display="block";
-    loadItemsEditor();
-  }
-}
-
-// 動畫
-function showWinEffect(name,price){
-  winEffect.innerText=`🔥 ${name} 搶標成功 $${price}`;
-  winEffect.classList.add("show");
-  setTimeout(()=>winEffect.classList.remove("show"),1200);
-}
-
-// UI同步
+// UI同步 + 動畫
 let lastPrice=0;
 
 db.ref("auction").on("value",snap=>{
   const d=snap.val();
-  if(!d)return;
+  if(!d) return;
 
-  item.innerText=d.item;
-  price.innerText=d.price;
-  name.innerText=d.name;
+  item.innerText=d.item||"";
+  price.innerText=d.price||0;
+  name.innerText=d.name||"";
 
   if(d.price>lastPrice){
-    showWinEffect(d.name,d.price);
+    showEffect(d.name,d.price);
   }
 
   lastPrice=d.price;
 });
 
+// 動畫
+function showEffect(n,p){
+  winEffect.innerText=`🔥 ${n} 搶標成功 $${p}`;
+  winEffect.classList.add("show");
+  setTimeout(()=>winEffect.classList.remove("show"),1000);
+}
+
 // 倒數
 setInterval(async ()=>{
   const d=(await db.ref("auction").once("value")).val();
-  if(!d||!d.endAt)return;
+  if(!d||!d.endAt) return;
 
-  const left=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
-  time.innerText=left;
+  const t=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
+  time.innerText=t;
 
-  if(left<=0 && !d.ended){
+  if(t<=0 && !d.ended){
     finishAuction();
   }
 },1000);
 
-// 出價
+// 出價（防衝突）
 function bid(){
   const u=firebase.auth().currentUser;
-  if(!u)return alert("請登入");
+  if(!u) return alert("請登入");
 
   const val=parseInt(bidInput.value);
-  if(isNaN(val))return;
+  if(isNaN(val)) return;
 
   db.ref("auction").transaction(d=>{
-    if(!d)return d;
-    if(val<=d.price)return;
+    if(!d) return d;
+    if(val<=d.price) return;
 
     d.price=val;
     d.name=u.displayName;
@@ -188,16 +149,16 @@ function bid(){
   });
 }
 
-// 結束（不刪歷史）
+// 結束（只新增，不刪）
 function finishAuction(){
   const ref=db.ref("auction");
 
   ref.transaction(d=>{
-    if(!d||d.ended)return;
+    if(!d||d.ended) return;
     d.ended=true;
     return d;
   },(e,ok,snap)=>{
-    if(!ok)return;
+    if(!ok) return;
 
     const d=snap.val();
 
@@ -209,74 +170,23 @@ function finishAuction(){
   });
 }
 
-// 🔥 歷史只顯示5筆（不刪DB）
+// 🔥 顯示10筆（關鍵修正）
 db.ref("history").on("value",snap=>{
-  const d=snap.val();
-  if(!d)return;
+  const data=snap.val();
 
-  history.innerHTML=Object.values(d)
+  if(!data){
+    history.innerHTML="<p>尚無紀錄</p>";
+    return;
+  }
+
+  const arr=Object.values(data);
+
+  history.innerHTML=arr
     .reverse()
-    .slice(0,5)
+    .slice(0,10)
     .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
     .join("");
 });
-
-// 商品編輯
-function loadItemsEditor(){
-  db.ref("items").once("value").then(s=>{
-    let items=s.val()||[
-      {item:"裝備1",time:60},
-      {item:"裝備2",time:60},
-      {item:"裝備3",time:60},
-      {item:"裝備4",time:60},
-      {item:"裝備5",time:60}
-    ];
-
-    itemsEditor.innerHTML=items.map((it,i)=>`
-      <div>
-        <input id="item_${i}" value="${it.item}">
-        <input id="time_${i}" value="${it.time}">
-      </div>
-    `).join("");
-  });
-}
-
-// 儲存（同步當前）
-function saveItems(){
-  let items=[];
-  for(let i=0;i<5;i++){
-    items.push({
-      item:document.getElementById("item_"+i).value,
-      time:parseInt(document.getElementById("time_"+i).value)
-    });
-  }
-
-  db.ref("items").set(items).then(()=>{
-    db.ref("currentIndex").once("value").then(s=>{
-      const idx=s.val()||0;
-      db.ref("auction").update({item:items[idx].item});
-    });
-  });
-}
-
-// 開始
-function startAll(){
-  db.ref("items").once("value").then(s=>{
-    const items=s.val();
-    if(!items)return;
-
-    db.ref("currentIndex").set(0);
-
-    const f=items[0];
-    db.ref("auction").set({
-      item:f.item,
-      price:0,
-      name:"無",
-      endAt:Date.now()+f.time*1000,
-      ended:false
-    });
-  });
-}
 
 </script>
 
