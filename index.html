@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>拍賣系統</title>
 
-<!-- Firebase v8（穩定版） -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -23,6 +23,7 @@ button { padding:10px 20px; margin-top:10px; cursor:pointer; }
 
 <body>
 
+<!-- 拍賣 -->
 <div class="box">
   <h2 id="item">拍賣商品</h2>
   <p>最高價：<span id="price">0</span></p>
@@ -36,36 +37,52 @@ button { padding:10px 20px; margin-top:10px; cursor:pointer; }
   <button onclick="bid()">出價</button>
 </div>
 
+<!-- 排行榜 -->
 <div class="box">
   <h3>排行榜 TOP 5</h3>
   <div id="rank"></div>
 </div>
 
+<!-- 管理員登入 -->
+<div class="box">
+  <h3>管理員登入</h3>
+  <input id="adminPass" type="password" placeholder="輸入管理員密碼">
+  <button onclick="adminLogin()">登入</button>
+</div>
+
+<!-- 管理員控制 -->
+<div class="box" id="adminBox" style="display:none;">
+  <h3>管理員控制</h3>
+  <input id="setItem" placeholder="商品名稱">
+  <input id="setTime" type="number" placeholder="秒數">
+  <button onclick="startAuction()">開始拍賣</button>
+</div>
+
 <script>
-// 🔥 Firebase 設定（你的）
+// 🔥 Firebase（你的設定）
 var firebaseConfig = {
   apiKey: "AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain: "auction-app-e04f8.firebaseapp.com",
   databaseURL: "https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "auction-app-e04f8",
+  projectId: "auction-app-e04f8"
 };
-
 firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
 
-// 🔐 登入
+// 🔐 Google登入
 function login() {
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider);
 }
 
+// 顯示使用者
 firebase.auth().onAuthStateChanged(user => {
   if (user) {
-    document.getElementById("user").innerText = "👤 " + user.uid;
+    document.getElementById("user").innerText = "👤 " + user.displayName;
   }
 });
 
-// 📡 同步資料
+// 📡 同步拍賣
 db.ref("auction").on("value", snap => {
   const d = snap.val();
   if (!d) return;
@@ -76,7 +93,7 @@ db.ref("auction").on("value", snap => {
   document.getElementById("time").innerText = d.time;
 });
 
-// 💰 出價（用 UID 防作弊）
+// 💰 出價
 function bid() {
   const user = firebase.auth().currentUser;
   if (!user) return alert("請先登入");
@@ -87,13 +104,12 @@ function bid() {
     const d = snap.val();
     if (price <= d.price) return alert("要更高");
 
-    // 更新最高價
     db.ref("auction").update({
       price: price,
-      name: user.uid
+      name: user.displayName
     });
 
-    // 🔥 存到 bids（排行榜用）
+    // 存 bids
     db.ref("auction/bids/" + user.uid).set({
       price: price
     });
@@ -112,7 +128,7 @@ setInterval(() => {
   });
 }, 1000);
 
-// 🔥 強制建立 bids（解決你卡的問題）
+// 🔥 強制建立 bids（解決你之前卡的）
 db.ref("auction/bids").once("value").then(snap => {
   if (!snap.exists()) {
     db.ref("auction/bids").set({init:1}).then(()=>{
@@ -140,6 +156,35 @@ db.ref("auction/bids").on("value", snap => {
 
   document.getElementById("rank").innerHTML = html;
 });
+
+// 🔐 管理員（密碼版）
+const ADMIN_PASSWORD = "123456";
+
+function adminLogin() {
+  const pass = document.getElementById("adminPass").value;
+
+  if (pass === ADMIN_PASSWORD) {
+    document.getElementById("adminBox").style.display = "block";
+    alert("管理員登入成功");
+  } else {
+    alert("密碼錯誤");
+  }
+}
+
+// 🛠️ 開始拍賣
+function startAuction() {
+  const item = document.getElementById("setItem").value;
+  const time = parseInt(document.getElementById("setTime").value);
+
+  db.ref("auction").set({
+    item: item,
+    price: 0,
+    name: "無",
+    time: time,
+    ended: false,
+    bids: {}
+  });
+}
 </script>
 
 </body>
