@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（最終完整版）</title>
+<title>拍賣系統（動畫完整版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -42,6 +42,26 @@ input{
   margin:5px;
   width:80%;
 }
+
+/* 🔥 動畫 */
+#winEffect{
+  position:fixed;
+  top:40%;
+  left:50%;
+  transform:translate(-50%,-50%) scale(0.5);
+  font-size:32px;
+  font-weight:bold;
+  color:gold;
+  opacity:0;
+  transition:0.3s;
+  z-index:9999;
+  text-shadow:0 0 20px gold;
+}
+
+#winEffect.show{
+  opacity:1;
+  transform:translate(-50%,-50%) scale(1.3);
+}
 </style>
 </head>
 
@@ -76,9 +96,11 @@ input{
   <button onclick="startAll()">開始5連拍</button>
 </div>
 
+<!-- 🔥 動畫 -->
+<div id="winEffect"></div>
+
 <script>
 
-// Firebase
 firebase.initializeApp({
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
@@ -100,12 +122,21 @@ firebase.auth().onAuthStateChanged(u=>{
 function adminLogin(){
   if(adminPwd.value===ADMIN_PASSWORD){
     adminPanel.style.display="block";
-  }else{
-    alert("密碼錯誤");
   }
 }
 
-// 同步拍賣
+// 🔥 動畫函式
+function showWin(text){
+  const el = document.getElementById("winEffect");
+  el.innerText = text;
+  el.classList.add("show");
+
+  setTimeout(()=>{
+    el.classList.remove("show");
+  },1500);
+}
+
+// 同步
 let currentAuction=null;
 
 db.ref("auction").on("value",snap=>{
@@ -117,7 +148,7 @@ db.ref("auction").on("value",snap=>{
   name.innerText=currentAuction.name||"無";
 });
 
-// 倒數（穩定版）
+// 倒數
 setInterval(()=>{
   if(!currentAuction||!currentAuction.endAt)return;
 
@@ -152,7 +183,7 @@ function bid(){
   });
 }
 
-// 結束 + 下一個
+// 🔥 結束
 function finishAuction(){
 
   db.ref("auction").transaction(d=>{
@@ -164,13 +195,22 @@ function finishAuction(){
 
     const d=snap.val();
 
-    // 存歷史
-    db.ref("history").push({
-      item:d.item||"未知",
-      name:d.name||"無",
-      price:d.price||0,
-      time:Date.now()
-    });
+    // 🔥 判斷有沒有人出價
+    if(d.price>0 && d.name!=="無"){
+
+      db.ref("history").push({
+        item:d.item,
+        name:d.name,
+        price:d.price,
+        time:Date.now()
+      });
+
+      // 🔥 動畫
+      showWin(`🎉 ${d.name} 得標 ${d.price}`);
+
+    }else{
+      showWin(`❌ 流標`);
+    }
 
     // 下一個
     db.ref("currentIndex").once("value").then(s=>{
@@ -181,7 +221,7 @@ function finishAuction(){
         const items=snap.val();
 
         if(!items||idx>=items.length){
-          alert("全部拍完");
+          showWin("🏁 全部拍完");
           return;
         }
 
@@ -202,33 +242,19 @@ function finishAuction(){
   });
 }
 
-// 🔥 歷史顯示（完全穩）
+// 歷史
 db.ref("history").on("value",snap=>{
-
   const data=snap.val();
-
   if(!data){
-    history.innerHTML="<p>尚無紀錄</p>";
+    history.innerHTML="尚無紀錄";
     return;
   }
 
   let arr=[];
-
-  for(let key in data){
-    const h=data[key];
+  for(let k in data){
+    const h=data[k];
     if(!h||!h.item)continue;
-
-    arr.push({
-      item:h.item,
-      name:h.name||"無",
-      price:h.price||0,
-      time:h.time||0
-    });
-  }
-
-  if(arr.length===0){
-    history.innerHTML="<p>尚無紀錄</p>";
-    return;
+    arr.push(h);
   }
 
   arr.sort((a,b)=>b.time-a.time);
@@ -238,11 +264,11 @@ db.ref("history").on("value",snap=>{
     .join("");
 });
 
-// 開始5連拍
+// 開始
 function startAll(){
   db.ref("items").once("value").then(s=>{
     const items=s.val();
-    if(!items)return alert("沒有商品");
+    if(!items)return;
 
     db.ref("currentIndex").set(0);
 
