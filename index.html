@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（最終完整版）</title>
+<title>拍賣系統（最終穩定版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -146,7 +146,7 @@ setInterval(async ()=>{
   }
 },1000);
 
-// 出價（transaction）
+// 出價（防搶標）
 function bid(){
 
   const user = firebase.auth().currentUser;
@@ -189,29 +189,32 @@ function bid(){
 
 }
 
-// 🔥 結束 → 下一個（含只留5筆）
+// 🔥 結束拍賣（重點修正）
 function finishAuction(d){
 
+  // 先新增
   db.ref("history").push({
     item:d.item,
     name:d.name,
     price:d.price
   }).then(()=>{
 
+    // 🔥 再刪到只剩5筆
     db.ref("history").once("value").then(snap=>{
       const data = snap.val();
       if(!data) return;
 
       const keys = Object.keys(data);
 
-      if(keys.length > 5){
-        const removeKey = keys[0];
+      while(keys.length > 5){
+        const removeKey = keys.shift();
         db.ref("history/" + removeKey).remove();
       }
     });
 
   });
 
+  // 下一個
   db.ref("currentIndex").once("value").then(iSnap=>{
     let i = (iSnap.val() || 0) + 1;
 
@@ -334,7 +337,7 @@ db.ref("auction/bids").on("value",snap=>{
     arr.map(u=>`<p>${u.name} - ${u.price}</p>`).join("");
 });
 
-// 歷史顯示
+// 🔥 顯示也只顯示5筆
 db.ref("history").on("value",snap=>{
   const data=snap.val();
   if(!data){
@@ -343,7 +346,9 @@ db.ref("history").on("value",snap=>{
   }
 
   document.getElementById("history").innerHTML =
-    Object.values(data).reverse()
+    Object.values(data)
+    .reverse()
+    .slice(0,5)
     .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
     .join("");
 });
