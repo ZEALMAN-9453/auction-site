@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（穩定10筆版）</title>
+<title>拍賣系統（最穩完整版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -29,7 +29,11 @@ button{
   border-radius:20px;
   background:#00bfff;
   color:#fff;
+  cursor:pointer;
 }
+input{padding:8px;margin:5px}
+
+/* 搶標動畫 */
 #winEffect{
   position:fixed;
   top:40%;
@@ -39,6 +43,7 @@ button{
   color:gold;
   opacity:0;
   transition:.3s;
+  z-index:999;
 }
 #winEffect.show{
   opacity:1;
@@ -53,12 +58,12 @@ button{
   <h2 id="item">拍賣商品</h2>
   <p>最高價：<span id="price">0</span></p>
   <p>出價者：<span id="name">無</span></p>
-  <p>剩餘時間：<span id="time">0</span></p>
+  <p>剩餘時間：<span id="time">0</span> 秒</p>
 
-  <button onclick="login()">登入</button>
+  <button onclick="login()">Google登入</button>
   <p id="user"></p>
 
-  <input id="bidInput" type="number">
+  <input id="bidInput" type="number" placeholder="輸入出價">
   <button onclick="bid()">出價</button>
 </div>
 
@@ -75,7 +80,7 @@ button{
 var config={
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
-  databaseURL:"https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app",
+  databaseURL:"https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 firebase.initializeApp(config);
 var db=firebase.database();
@@ -85,8 +90,16 @@ function login(){
   firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
 firebase.auth().onAuthStateChanged(u=>{
-  if(u) user.innerText=u.displayName;
+  if(u) document.getElementById("user").innerText="👤 "+u.displayName;
 });
+
+// 搶標動畫
+function showEffect(n,p){
+  const el=document.getElementById("winEffect");
+  el.innerText=`🔥 ${n} 搶標成功 $${p}`;
+  el.classList.add("show");
+  setTimeout(()=>el.classList.remove("show"),1000);
+}
 
 // UI同步 + 動畫
 let lastPrice=0;
@@ -95,9 +108,9 @@ db.ref("auction").on("value",snap=>{
   const d=snap.val();
   if(!d) return;
 
-  item.innerText=d.item||"";
-  price.innerText=d.price||0;
-  name.innerText=d.name||"";
+  document.getElementById("item").innerText=d.item||"";
+  document.getElementById("price").innerText=d.price||0;
+  document.getElementById("name").innerText=d.name||"無";
 
   if(d.price>lastPrice){
     showEffect(d.name,d.price);
@@ -106,32 +119,25 @@ db.ref("auction").on("value",snap=>{
   lastPrice=d.price;
 });
 
-// 動畫
-function showEffect(n,p){
-  winEffect.innerText=`🔥 ${n} 搶標成功 $${p}`;
-  winEffect.classList.add("show");
-  setTimeout(()=>winEffect.classList.remove("show"),1000);
-}
-
 // 倒數
 setInterval(async ()=>{
   const d=(await db.ref("auction").once("value")).val();
   if(!d||!d.endAt) return;
 
   const t=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
-  time.innerText=t;
+  document.getElementById("time").innerText=t;
 
   if(t<=0 && !d.ended){
     finishAuction();
   }
 },1000);
 
-// 出價（防衝突）
+// 出價
 function bid(){
   const u=firebase.auth().currentUser;
   if(!u) return alert("請登入");
 
-  const val=parseInt(bidInput.value);
+  const val=parseInt(document.getElementById("bidInput").value);
   if(isNaN(val)) return;
 
   db.ref("auction").transaction(d=>{
@@ -149,7 +155,7 @@ function bid(){
   });
 }
 
-// 結束（只新增，不刪）
+// 結束（防重複 + 正確寫入）
 function finishAuction(){
   const ref=db.ref("auction");
 
@@ -163,29 +169,34 @@ function finishAuction(){
     const d=snap.val();
 
     db.ref("history").push({
-      item:d.item,
-      name:d.name,
-      price:d.price
+      item:d.item||"未知",
+      name:d.name||"無",
+      price:d.price||0,
+      time:Date.now()
     });
   });
 }
 
-// 🔥 顯示10筆（關鍵修正）
+// 🔥 得標紀錄（穩定寫法）
 db.ref("history").on("value",snap=>{
   const data=snap.val();
 
   if(!data){
-    history.innerHTML="<p>尚無紀錄</p>";
+    document.getElementById("history").innerHTML="<p>尚無紀錄</p>";
     return;
   }
 
-  const arr=Object.values(data);
+  let arr=[];
 
-  history.innerHTML=arr
-    .reverse()
-    .slice(0,10)
-    .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
-    .join("");
+  for(let key in data){
+    arr.push(data[key]);
+  }
+
+  document.getElementById("history").innerHTML=
+    arr.reverse()
+       .slice(0,10)
+       .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
+       .join("");
 });
 
 </script>
