@@ -33,7 +33,7 @@ button { padding:10px 20px; margin-top:10px; cursor:pointer; }
   <button onclick="login()">Google登入</button>
   <p id="user"></p>
 
-  <input id="bid" type="number" placeholder="輸入出價">
+  <input id="bidInput" type="number" placeholder="輸入出價">
   <button onclick="bid()">出價</button>
 </div>
 
@@ -46,7 +46,7 @@ button { padding:10px 20px; margin-top:10px; cursor:pointer; }
 <!-- 管理員登入 -->
 <div class="box">
   <h3>管理員登入</h3>
-  <input id="adminPass" type="password" placeholder="輸入管理員密碼">
+  <input id="adminPass" type="password" placeholder="輸入密碼">
   <button onclick="adminLogin()">登入</button>
 </div>
 
@@ -59,7 +59,7 @@ button { padding:10px 20px; margin-top:10px; cursor:pointer; }
 </div>
 
 <script>
-// ===== Firebase 設定（已幫你填）=====
+// ===== Firebase 設定（你的）=====
 var firebaseConfig = {
   apiKey: "AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain: "auction-app-e04f8.firebaseapp.com",
@@ -69,20 +69,24 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
 
-// ===== 登入 =====
+// ===== Google 登入 =====
 function login() {
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider);
 }
 
-// 顯示登入者
+// 顯示使用者 + 建立 users 對照
 firebase.auth().onAuthStateChanged(user => {
   if (user) {
     document.getElementById("user").innerText = "👤 " + user.displayName;
+
+    db.ref("users/" + user.uid).set({
+      name: user.displayName
+    });
   }
 });
 
-// ===== 同步拍賣資料 =====
+// ===== 同步拍賣 =====
 db.ref("auction").on("value", snap => {
   const d = snap.val();
   if (!d) return;
@@ -90,60 +94,68 @@ db.ref("auction").on("value", snap => {
   document.getElementById("item").innerText = "拍賣商品：" + d.item;
   document.getElementById("price").innerText = d.price;
   document.getElementById("name").innerText = d.name;
-  document.getElementById("time").innerText = d.time;
 });
 
-// ===== 出價 =====
-function bid() {
-  const user = firebase.auth().currentUser;
-  if (!user) return alert("請先登入");
-
-  const price = parseInt(document.getElementById("bid").value);
-
-  db.ref("auction").once("value").then(snap => {
-    const d = snap.val();
-    if (!d || price <= d.price) return alert("要更高");
-
-    db.ref("auction").update({
-      price: price,
-      name: user.displayName
-    });
-
-    // 排行榜
-    db.ref("auction/bids/" + user.uid).set({
-      price: price
-    });
-  });
-}
-
-// ===== 倒數 =====
+// ===== 倒數（穩定版）=====
 setInterval(() => {
   db.ref("auction").once("value").then(snap => {
     const d = snap.val();
-    if (!d) return;
+    if (!d || !d.endAt) return;
 
-    if (d.time > 0) {
-      db.ref("auction/time").set(d.time - 1);
+    const left = Math.max(0, Math.floor((d.endAt - Date.now()) / 1000));
+    document.getElementById("time").innerText = left;
+
+    if (left <= 0 && !d.ended) {
+      db.ref("auction/ended").set(true);
     }
   });
 }, 1000);
 
-// ===== 強制建立 bids（解決你之前卡住）=====
-db.ref("auction/bids").once("value").then(snap => {
-  if (!snap.exists()) {
-    db.ref("auction/bids").set({init:1}).then(()=>{
-      db.ref("auction/bids/init").remove();
-    });
-  }
-});
+// ===== 出價（含最後10秒+30秒）=====
+function bid() {
+  const user = firebase.auth().currentUser;
+  if (!user) return alert("請先登入");
 
-// ===== 排行榜 =====
+  const price = parseInt(document.getElementById("bidInput").value);
+
+  db.ref("auction").once("value").then(snap => {
+    const d = snap.val();
+    if (!d || d.ended) return;
+
+    if (price <= d.price) return alert("要更高");
+
+    const now = Date.now();
+    const left = Math.floor((d.endAt - now) / 1000);
+
+    let newEndAt = d.endAt;
+
+    // 🔥 最後10秒 → +30秒
+    if (left <= 10) {
+      newEndAt = d.endAt + 30000;
+    }
+
+    db.ref("auction").update({
+      price: price,
+      name: user.displayName,
+      endAt: newEndAt
+    });
+
+    db.ref("auction/bids/" + user.uid).set({
+      price: price,
+      name: user.displayName
+    });
+  });
+}
+
+// ===== 排行榜（顯示名字）=====
 db.ref("auction/bids").on("value", snap => {
   const data = snap.val();
   if (!data) return;
 
   let arr = Object.entries(data).map(([uid, v]) => ({
-    uid, price: v.price
+    uid,
+    price: v.price,
+    name: v.name || "匿名"
   }));
 
   arr.sort((a,b)=>b.price-a.price);
@@ -151,21 +163,20 @@ db.ref("auction/bids").on("value", snap => {
 
   let html = "";
   arr.forEach((u,i)=>{
-    html += `<p>${i+1}. ${u.uid} - ${u.price}</p>`;
+    html += `<p>${i+1}. ${u.name} - ${u.price}</p>`;
   });
 
   document.getElementById("rank").innerHTML = html;
 });
 
 // ===== 管理員（密碼版）=====
-const ADMIN_PASSWORD = "123456";
+const ADMIN_PASSWORD = "800430";
 
 function adminLogin() {
   const pass = document.getElementById("adminPass").value;
 
   if (pass === ADMIN_PASSWORD) {
     document.getElementById("adminBox").style.display = "block";
-    alert("管理員登入成功");
   } else {
     alert("密碼錯誤");
   }
@@ -174,14 +185,16 @@ function adminLogin() {
 // ===== 開始拍賣 =====
 function startAuction() {
   const item = document.getElementById("setItem").value;
-  const time = parseInt(document.getElementById("setTime").value);
+  const duration = parseInt(document.getElementById("setTime").value);
+
+  const endAt = Date.now() + duration * 1000;
 
   db.ref("auction").set({
     item: item,
     price: 0,
     name: "無",
-    time: time,
     ended: false,
+    endAt: endAt,
     bids: {}
   });
 }
