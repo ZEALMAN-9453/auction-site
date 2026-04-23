@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（最終穩定版）</title>
+<title>拍賣系統（最終完整版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -18,40 +18,30 @@ body{
   display:flex;
   flex-direction:column;
   align-items:center;
-
   min-height:100vh;
-  overflow-y:auto;
   padding:30px 0;
 }
 
-/* 遮罩 */
 body::before{
   content:"";
   position:fixed;
-  top:0;
-  left:0;
   width:100%;
   height:100%;
   background:rgba(0,0,0,0.5);
   z-index:0;
 }
 
-/* 卡片 */
 .box{
   position:relative;
   z-index:1;
-
   background:rgba(0,0,0,0.65);
   color:#fff;
   padding:20px;
   margin:15px 0;
   width:360px;
   border-radius:15px;
-  backdrop-filter:blur(10px);
-  text-align:center;
 }
 
-/* 按鈕 */
 button{
   padding:10px 20px;
   border:none;
@@ -61,14 +51,12 @@ button{
   cursor:pointer;
 }
 
-/* 輸入框 */
 input{
   padding:8px;
   margin:5px;
   width:80%;
 }
 
-/* 搶標動畫 */
 #winEffect{
   position:fixed;
   top:40%;
@@ -76,7 +64,6 @@ input{
   transform:translate(-50%,-50%) scale(0.5);
   font-size:32px;
   color:gold;
-  text-shadow:0 0 20px gold;
   opacity:0;
   transition:.3s;
   z-index:9999;
@@ -110,7 +97,7 @@ input{
 
 <div class="box">
   <h3>管理員登入</h3>
-  <input id="adminPwd" type="password" placeholder="輸入密碼">
+  <input id="adminPwd" type="password">
   <button onclick="adminLogin()">登入</button>
 </div>
 
@@ -125,7 +112,6 @@ input{
 
 <script>
 
-// Firebase
 var config={
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
@@ -142,43 +128,38 @@ function login(){
   firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
 firebase.auth().onAuthStateChanged(u=>{
-  if(u) document.getElementById("user").innerText="👤 "+u.displayName;
+  if(u) user.innerText="👤 "+u.displayName;
 });
 
 // 管理員
 function adminLogin(){
-  if(document.getElementById("adminPwd").value===ADMIN_PASSWORD){
+  if(adminPwd.value===ADMIN_PASSWORD){
     isAdmin=true;
-    document.getElementById("adminPanel").style.display="block";
+    adminPanel.style.display="block";
     loadItemsEditor();
-  }else{
-    alert("密碼錯誤");
   }
 }
 
-// 搶標動畫
+// 動畫
 function showEffect(n,p){
-  const el=document.getElementById("winEffect");
-  el.innerText=`🔥 ${n} 搶標成功 $${p}`;
-  el.classList.add("show");
-  setTimeout(()=>el.classList.remove("show"),1000);
+  winEffect.innerText=`🔥 ${n} 搶標成功 $${p}`;
+  winEffect.classList.add("show");
+  setTimeout(()=>winEffect.classList.remove("show"),1000);
 }
 
 // UI同步
 let lastPrice=0;
-
 db.ref("auction").on("value",snap=>{
   const d=snap.val();
   if(!d)return;
 
-  document.getElementById("item").innerText=d.item||"";
-  document.getElementById("price").innerText=d.price||0;
-  document.getElementById("name").innerText=d.name||"無";
+  item.innerText=d.item;
+  price.innerText=d.price;
+  name.innerText=d.name;
 
   if(d.price>lastPrice){
     showEffect(d.name,d.price);
   }
-
   lastPrice=d.price;
 });
 
@@ -188,7 +169,7 @@ setInterval(async ()=>{
   if(!d||!d.endAt)return;
 
   const t=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
-  document.getElementById("time").innerText=t;
+  time.innerText=t;
 
   if(t<=0 && !d.ended){
     finishAuction();
@@ -200,7 +181,7 @@ function bid(){
   const u=firebase.auth().currentUser;
   if(!u)return alert("請登入");
 
-  const val=parseInt(document.getElementById("bidInput").value);
+  const val=parseInt(bidInput.value);
   if(isNaN(val))return;
 
   db.ref("auction").transaction(d=>{
@@ -213,12 +194,11 @@ function bid(){
     if((d.endAt-Date.now())/1000<=10){
       d.endAt+=30000;
     }
-
     return d;
   });
 }
 
-// 結束（防重複）
+// 🔥 關鍵：自動跳下一個
 function finishAuction(){
   const ref=db.ref("auction");
 
@@ -231,34 +211,59 @@ function finishAuction(){
 
     const d=snap.val();
 
+    // 存歷史
     db.ref("history").push({
-      item:d.item||"未知",
-      name:d.name||"無",
-      price:d.price||0,
+      item:d.item,
+      name:d.name,
+      price:d.price,
       time:Date.now()
     });
+
+    // 下一個
+    db.ref("currentIndex").once("value").then(s=>{
+      let idx=s.val()||0;
+      idx++;
+
+      db.ref("items").once("value").then(snap=>{
+        const items=snap.val();
+
+        if(!items||idx>=items.length){
+          alert("全部拍完");
+          return;
+        }
+
+        const next=items[idx];
+
+        db.ref("currentIndex").set(idx);
+
+        db.ref("auction").set({
+          item:next.item,
+          price:0,
+          name:"無",
+          endAt:Date.now()+next.time*1000,
+          ended:false
+        });
+      });
+    });
+
   });
 }
 
-// 🔥 歷史（穩定顯示10筆）
+// 歷史顯示
 db.ref("history").on("value",snap=>{
   const data=snap.val();
-
   if(!data){
-    document.getElementById("history").innerHTML="<p>尚無紀錄</p>";
+    history.innerHTML="<p>尚無紀錄</p>";
     return;
   }
 
   let arr=[];
-  for(let key in data){
-    arr.push(data[key]);
+  for(let k in data){
+    arr.push(data[k]);
   }
 
-  document.getElementById("history").innerHTML=
-    arr.reverse()
-       .slice(0,10)
-       .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
-       .join("");
+  history.innerHTML=arr.reverse().slice(0,10)
+    .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`).join("");
 });
 
 // 商品編輯
@@ -272,10 +277,10 @@ function loadItemsEditor(){
       {item:"裝備5",time:60}
     ];
 
-    document.getElementById("itemsEditor").innerHTML=items.map((it,i)=>`
+    itemsEditor.innerHTML=items.map((it,i)=>`
       <div>
         <input id="item_${i}" value="${it.item}">
-        <input id="time_${i}" value="${it.time}" style="width:60px">
+        <input id="time_${i}" value="${it.time}">
       </div>
     `).join("");
   });
@@ -290,7 +295,6 @@ function saveItems(){
       time:parseInt(document.getElementById("time_"+i).value)
     });
   }
-
   db.ref("items").set(items);
 }
 
@@ -299,6 +303,8 @@ function startAll(){
   db.ref("items").once("value").then(s=>{
     const items=s.val();
     if(!items)return;
+
+    db.ref("currentIndex").set(0);
 
     const f=items[0];
 
