@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（最終版）</title>
+<title>拍賣系統（最穩版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -56,11 +56,11 @@ input {
   <p>出價者：<span id="name">無</span></p>
   <p>剩餘時間：<span id="time">0</span> 秒</p>
 
-  <button onclick="login()">Google登入</button>
+  <button id="loginBtn">Google登入</button>
   <p id="user"></p>
 
   <input id="bidInput" type="number" placeholder="輸入出價">
-  <button onclick="bid()">出價</button>
+  <button id="bidBtn">出價</button>
 </div>
 
 <div class="box">
@@ -77,20 +77,23 @@ input {
 <div class="box">
   <h3>管理員登入</h3>
   <input id="adminPwd" type="password" placeholder="輸入密碼">
-  <button onclick="adminLogin()">登入</button>
+  <button id="adminLoginBtn">登入</button>
 </div>
 
 <!-- 管理員後台 -->
 <div class="box" id="adminPanel" style="display:none;">
   <h3>管理員後台</h3>
-
   <div id="itemsEditor"></div>
-
-  <button onclick="saveItems()">儲存商品</button>
-  <button onclick="startAll()">開始5連拍</button>
+  <button id="saveItemsBtn">儲存商品</button>
+  <button id="startBtn">開始5連拍</button>
 </div>
 
 <script>
+
+// ===== 防爆 =====
+window.onerror = function(msg, url, line){
+  alert("JS錯誤: "+msg+" 行:"+line);
+};
 
 // ===== Firebase =====
 var firebaseConfig = {
@@ -102,9 +105,20 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
 
-// ===== 管理員密碼 =====
+// ===== 管理員 =====
 const ADMIN_PASSWORD = "800430";
 let isAdmin = false;
+
+// ===== DOM READY（關鍵，保證按鈕會動）=====
+document.addEventListener("DOMContentLoaded", function(){
+
+  document.getElementById("loginBtn").onclick = login;
+  document.getElementById("bidBtn").onclick = bid;
+  document.getElementById("adminLoginBtn").onclick = adminLogin;
+  document.getElementById("startBtn").onclick = startAll;
+  document.getElementById("saveItemsBtn").onclick = saveItems;
+
+});
 
 // ===== 登入 =====
 function login(){
@@ -120,9 +134,9 @@ firebase.auth().onAuthStateChanged(user=>{
 
 // ===== 管理員登入 =====
 function adminLogin(){
-  const input = document.getElementById("adminPwd").value.trim();
+  const pwd = document.getElementById("adminPwd").value.trim();
 
-  if(input === ADMIN_PASSWORD){
+  if(pwd === ADMIN_PASSWORD){
     isAdmin = true;
     document.getElementById("adminPanel").style.display = "block";
     alert("登入成功");
@@ -159,10 +173,7 @@ setInterval(async ()=>{
 // ===== 出價 =====
 function bid(){
   const user = firebase.auth().currentUser;
-  if(!user){
-    alert("請先登入");
-    return;
-  }
+  if(!user) return alert("請先登入");
 
   const priceVal = parseInt(document.getElementById("bidInput").value);
   if(isNaN(priceVal)) return;
@@ -172,9 +183,7 @@ function bid(){
     if(priceVal <= d.price) return;
 
     let endAt = d.endAt;
-    const left = Math.floor((d.endAt - Date.now())/1000);
-
-    if(left <= 10){
+    if((d.endAt - Date.now())/1000 <= 10){
       endAt += 30000;
     }
 
@@ -191,7 +200,7 @@ function bid(){
   });
 }
 
-// ===== 結束 → 下一個 =====
+// ===== 自動下一個 =====
 function finishAuction(d){
 
   db.ref("history").push({
@@ -231,10 +240,7 @@ function finishAuction(d){
 // ===== 開始5連拍 =====
 function startAll(){
 
-  if(!isAdmin){
-    alert("你沒有權限");
-    return;
-  }
+  if(!isAdmin) return alert("你沒有權限");
 
   db.ref("items").once("value").then(snap=>{
     const items = snap.val();
@@ -255,21 +261,17 @@ function startAll(){
   });
 }
 
-// ===== 商品編輯 =====
+// ===== 編輯商品 =====
 function loadItemsEditor(){
 
   db.ref("items").once("value").then(snap=>{
-    let items = snap.val();
-
-    if(!items){
-      items = [
-        {item:"裝備1",time:60},
-        {item:"裝備2",time:60},
-        {item:"裝備3",time:60},
-        {item:"裝備4",time:60},
-        {item:"裝備5",time:60}
-      ];
-    }
+    let items = snap.val() || [
+      {item:"裝備1",time:60},
+      {item:"裝備2",time:60},
+      {item:"裝備3",time:60},
+      {item:"裝備4",time:60},
+      {item:"裝備5",time:60}
+    ];
 
     let html = "";
 
@@ -289,16 +291,15 @@ function loadItemsEditor(){
 // ===== 儲存商品 =====
 function saveItems(){
 
-  if(!isAdmin){
-    alert("你沒有權限");
-    return;
-  }
+  if(!isAdmin) return alert("你沒有權限");
 
   let items = [];
 
   for(let i=0;i<5;i++){
     const name = document.getElementById("item_"+i).value;
     const time = parseInt(document.getElementById("time_"+i).value);
+
+    if(!name || isNaN(time)) return alert("第 "+(i+1)+" 格錯誤");
 
     items.push({item:name, time:time});
   }
@@ -316,15 +317,10 @@ db.ref("auction/bids").on("value",snap=>{
     return;
   }
 
-  let arr=Object.values(data);
-  arr.sort((a,b)=>b.price-a.price);
+  let arr=Object.values(data).sort((a,b)=>b.price-a.price);
 
-  let html="";
-  arr.forEach(u=>{
-    html+=`<p>${u.name} - ${u.price}</p>`;
-  });
-
-  document.getElementById("rank").innerHTML = html;
+  document.getElementById("rank").innerHTML =
+    arr.map(u=>`<p>${u.name} - ${u.price}</p>`).join("");
 });
 
 // ===== 歷史 =====
@@ -335,12 +331,10 @@ db.ref("history").on("value",snap=>{
     return;
   }
 
-  let html="";
-  Object.values(data).reverse().forEach(h=>{
-    html+=`<p>${h.item} - ${h.name} (${h.price})</p>`;
-  });
-
-  document.getElementById("history").innerHTML = html;
+  document.getElementById("history").innerHTML =
+    Object.values(data).reverse()
+    .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
+    .join("");
 });
 
 </script>
