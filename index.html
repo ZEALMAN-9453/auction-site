@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（動畫完整版）</title>
+<title>拍賣系統 完整版</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -18,9 +18,8 @@ body{
   align-items:center;
   padding:20px;
 }
-
 .box{
-  background:rgba(0,0,0,0.7);
+  background:rgba(0,0,0,0.75);
   color:#fff;
   padding:20px;
   margin:10px;
@@ -28,7 +27,6 @@ body{
   border-radius:15px;
   text-align:center;
 }
-
 button{
   padding:10px 20px;
   border:none;
@@ -36,7 +34,6 @@ button{
   background:#00bfff;
   color:white;
 }
-
 input{
   padding:8px;
   margin:5px;
@@ -50,14 +47,11 @@ input{
   left:50%;
   transform:translate(-50%,-50%) scale(0.5);
   font-size:32px;
-  font-weight:bold;
   color:gold;
   opacity:0;
-  transition:0.3s;
-  z-index:9999;
+  transition:.3s;
   text-shadow:0 0 20px gold;
 }
-
 #winEffect.show{
   opacity:1;
   transform:translate(-50%,-50%) scale(1.3);
@@ -92,23 +86,25 @@ input{
 </div>
 
 <div class="box" id="adminPanel" style="display:none;">
-  <h3>管理員後台</h3>
-  <button onclick="startAll()">開始5連拍</button>
+  <h3>管理員後台（5連拍設定）</h3>
+  <div id="editor"></div>
+  <button onclick="saveItems()">儲存商品</button>
+  <button onclick="startAuction()">開始5連拍</button>
 </div>
 
-<!-- 🔥 動畫 -->
 <div id="winEffect"></div>
 
 <script>
 
+// 🔥 Firebase
 firebase.initializeApp({
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
   databaseURL:"https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app"
 });
-const db=firebase.database();
+const db = firebase.database();
 
-const ADMIN_PASSWORD="800430";
+const ADMIN_PASSWORD = "800430";
 
 // 登入
 function login(){
@@ -118,45 +114,87 @@ firebase.auth().onAuthStateChanged(u=>{
   if(u) user.innerText="👤 "+(u.displayName||u.email);
 });
 
-// 管理員
+// 管理員登入
 function adminLogin(){
   if(adminPwd.value===ADMIN_PASSWORD){
     adminPanel.style.display="block";
+    loadEditor();
+  }else{
+    alert("密碼錯誤");
   }
 }
 
-// 🔥 動畫函式
-function showWin(text){
-  const el = document.getElementById("winEffect");
-  el.innerText = text;
-  el.classList.add("show");
+// 載入商品設定
+function loadEditor(){
+  db.ref("items").once("value").then(s=>{
+    let items=s.val()||[
+      {item:"商品1",time:60},
+      {item:"商品2",time:60},
+      {item:"商品3",time:60},
+      {item:"商品4",time:60},
+      {item:"商品5",time:60}
+    ];
 
-  setTimeout(()=>{
-    el.classList.remove("show");
-  },1500);
+    editor.innerHTML = items.map((it,i)=>`
+      <div>
+        <input id="name_${i}" value="${it.item}">
+        <input id="time_${i}" value="${it.time}">
+      </div>
+    `).join("");
+  });
+}
+
+// 儲存商品
+function saveItems(){
+  let arr=[];
+  for(let i=0;i<5;i++){
+    arr.push({
+      item:document.getElementById("name_"+i).value,
+      time:parseInt(document.getElementById("time_"+i).value)
+    });
+  }
+  db.ref("items").set(arr);
+  alert("已儲存");
+}
+
+// 開始5連拍
+function startAuction(){
+  db.ref("items").once("value").then(s=>{
+    const items=s.val();
+    if(!items)return;
+
+    db.ref("currentIndex").set(0);
+
+    db.ref("auction").set({
+      item:items[0].item,
+      price:0,
+      name:"無",
+      endAt:Date.now()+items[0].time*1000,
+      ended:false
+    });
+  });
 }
 
 // 同步
-let currentAuction=null;
-
+let current=null;
 db.ref("auction").on("value",snap=>{
-  currentAuction=snap.val();
-  if(!currentAuction)return;
+  current=snap.val();
+  if(!current)return;
 
-  item.innerText=currentAuction.item||"";
-  price.innerText=currentAuction.price||0;
-  name.innerText=currentAuction.name||"無";
+  item.innerText=current.item;
+  price.innerText=current.price;
+  name.innerText=current.name;
 });
 
 // 倒數
 setInterval(()=>{
-  if(!currentAuction||!currentAuction.endAt)return;
+  if(!current)return;
 
-  const t=Math.max(0,Math.floor((currentAuction.endAt-Date.now())/1000));
+  const t=Math.max(0,Math.floor((current.endAt-Date.now())/1000));
   time.innerText=t;
 
-  if(t<=0 && !currentAuction.ended){
-    finishAuction();
+  if(t<=0 && !current.ended){
+    finish();
   }
 },1000);
 
@@ -174,17 +212,19 @@ function bid(){
 
     d.price=val;
     d.name=u.displayName||u.email||"玩家";
-
-    if((d.endAt-Date.now())/1000<=10){
-      d.endAt+=30000;
-    }
-
     return d;
   });
 }
 
-// 🔥 結束
-function finishAuction(){
+// 動畫
+function showWin(txt){
+  winEffect.innerText=txt;
+  winEffect.classList.add("show");
+  setTimeout(()=>winEffect.classList.remove("show"),1500);
+}
+
+// 結束
+function finish(){
 
   db.ref("auction").transaction(d=>{
     if(!d||d.ended)return;
@@ -195,7 +235,7 @@ function finishAuction(){
 
     const d=snap.val();
 
-    // 🔥 判斷有沒有人出價
+    // 🔥 寫入歷史（最多10筆）
     if(d.price>0 && d.name!=="無"){
 
       db.ref("history").push({
@@ -205,11 +245,24 @@ function finishAuction(){
         time:Date.now()
       });
 
-      // 🔥 動畫
       showWin(`🎉 ${d.name} 得標 ${d.price}`);
 
+      // 🔥 限制10筆
+      db.ref("history").once("value").then(s=>{
+        const data=s.val();
+        if(!data)return;
+
+        const keys=Object.keys(data);
+        if(keys.length>10){
+          const removeKeys=keys.sort().slice(0,keys.length-10);
+          removeKeys.forEach(k=>{
+            db.ref("history/"+k).remove();
+          });
+        }
+      });
+
     }else{
-      showWin(`❌ 流標`);
+      showWin("❌ 流標");
     }
 
     // 下一個
@@ -220,20 +273,18 @@ function finishAuction(){
       db.ref("items").once("value").then(snap=>{
         const items=snap.val();
 
-        if(!items||idx>=items.length){
+        if(idx>=items.length){
           showWin("🏁 全部拍完");
           return;
         }
 
-        const next=items[idx];
-
         db.ref("currentIndex").set(idx);
 
         db.ref("auction").set({
-          item:next.item,
+          item:items[idx].item,
           price:0,
           name:"無",
-          endAt:Date.now()+next.time*1000,
+          endAt:Date.now()+items[idx].time*1000,
           ended:false
         });
       });
@@ -242,7 +293,7 @@ function finishAuction(){
   });
 }
 
-// 歷史
+// 顯示歷史
 db.ref("history").on("value",snap=>{
   const data=snap.val();
   if(!data){
@@ -250,39 +301,13 @@ db.ref("history").on("value",snap=>{
     return;
   }
 
-  let arr=[];
-  for(let k in data){
-    const h=data[k];
-    if(!h||!h.item)continue;
-    arr.push(h);
-  }
-
+  let arr=Object.values(data);
   arr.sort((a,b)=>b.time-a.time);
 
   history.innerHTML=arr.slice(0,10)
     .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
     .join("");
 });
-
-// 開始
-function startAll(){
-  db.ref("items").once("value").then(s=>{
-    const items=s.val();
-    if(!items)return;
-
-    db.ref("currentIndex").set(0);
-
-    const f=items[0];
-
-    db.ref("auction").set({
-      item:f.item,
-      price:0,
-      name:"無",
-      endAt:Date.now()+f.time*1000,
-      ended:false
-    });
-  });
-}
 
 </script>
 
