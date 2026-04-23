@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統 完整版</title>
+<title>拍賣系統 最終完整版</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -40,19 +40,19 @@ input{
   width:80%;
 }
 
-/* 🔥 動畫 */
-#winEffect{
+/* 動畫 */
+#win{
   position:fixed;
   top:40%;
   left:50%;
   transform:translate(-50%,-50%) scale(0.5);
-  font-size:32px;
+  font-size:30px;
   color:gold;
   opacity:0;
   transition:.3s;
   text-shadow:0 0 20px gold;
 }
-#winEffect.show{
+#win.show{
   opacity:1;
   transform:translate(-50%,-50%) scale(1.3);
 }
@@ -86,17 +86,17 @@ input{
 </div>
 
 <div class="box" id="adminPanel" style="display:none;">
-  <h3>管理員後台（5連拍設定）</h3>
+  <h3>5連拍設定</h3>
   <div id="editor"></div>
-  <button onclick="saveItems()">儲存商品</button>
-  <button onclick="startAuction()">開始5連拍</button>
+  <button onclick="saveItems()">儲存</button>
+  <button onclick="start()">開始5連拍</button>
 </div>
 
-<div id="winEffect"></div>
+<div id="win"></div>
 
 <script>
 
-// 🔥 Firebase
+// Firebase
 firebase.initializeApp({
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
@@ -114,18 +114,18 @@ firebase.auth().onAuthStateChanged(u=>{
   if(u) user.innerText="👤 "+(u.displayName||u.email);
 });
 
-// 管理員登入
+// 管理員
 function adminLogin(){
   if(adminPwd.value===ADMIN_PASSWORD){
     adminPanel.style.display="block";
-    loadEditor();
+    loadItems();
   }else{
-    alert("密碼錯誤");
+    alert("錯誤");
   }
 }
 
-// 載入商品設定
-function loadEditor(){
+// 載入商品
+function loadItems(){
   db.ref("items").once("value").then(s=>{
     let items=s.val()||[
       {item:"商品1",time:60},
@@ -135,7 +135,7 @@ function loadEditor(){
       {item:"商品5",time:60}
     ];
 
-    editor.innerHTML = items.map((it,i)=>`
+    editor.innerHTML=items.map((it,i)=>`
       <div>
         <input id="name_${i}" value="${it.item}">
         <input id="time_${i}" value="${it.time}">
@@ -144,7 +144,7 @@ function loadEditor(){
   });
 }
 
-// 儲存商品
+// 儲存
 function saveItems(){
   let arr=[];
   for(let i=0;i<5;i++){
@@ -154,11 +154,11 @@ function saveItems(){
     });
   }
   db.ref("items").set(arr);
-  alert("已儲存");
+  alert("完成");
 }
 
-// 開始5連拍
-function startAuction(){
+// 開始
+function start(){
   db.ref("items").once("value").then(s=>{
     const items=s.val();
     if(!items)return;
@@ -198,7 +198,7 @@ setInterval(()=>{
   }
 },1000);
 
-// 出價
+// 出價（含延長時間）
 function bid(){
   const u=firebase.auth().currentUser;
   if(!u)return alert("請登入");
@@ -212,15 +212,21 @@ function bid(){
 
     d.price=val;
     d.name=u.displayName||u.email||"玩家";
+
+    // 🔥 最後10秒延長30秒
+    if((d.endAt-Date.now())/1000<=10){
+      d.endAt+=30000;
+    }
+
     return d;
   });
 }
 
 // 動畫
-function showWin(txt){
-  winEffect.innerText=txt;
-  winEffect.classList.add("show");
-  setTimeout(()=>winEffect.classList.remove("show"),1500);
+function show(text){
+  win.innerText=text;
+  win.classList.add("show");
+  setTimeout(()=>win.classList.remove("show"),1500);
 }
 
 // 結束
@@ -235,7 +241,6 @@ function finish(){
 
     const d=snap.val();
 
-    // 🔥 寫入歷史（最多10筆）
     if(d.price>0 && d.name!=="無"){
 
       db.ref("history").push({
@@ -245,27 +250,23 @@ function finish(){
         time:Date.now()
       });
 
-      showWin(`🎉 ${d.name} 得標 ${d.price}`);
+      show(`🎉 ${d.name} 得標 ${d.price}`);
 
-      // 🔥 限制10筆
+      // 保留10筆
       db.ref("history").once("value").then(s=>{
         const data=s.val();
         if(!data)return;
-
         const keys=Object.keys(data);
         if(keys.length>10){
-          const removeKeys=keys.sort().slice(0,keys.length-10);
-          removeKeys.forEach(k=>{
-            db.ref("history/"+k).remove();
-          });
+          keys.sort().slice(0,keys.length-10)
+          .forEach(k=>db.ref("history/"+k).remove());
         }
       });
 
     }else{
-      showWin("❌ 流標");
+      show("❌ 流標");
     }
 
-    // 下一個
     db.ref("currentIndex").once("value").then(s=>{
       let idx=s.val()||0;
       idx++;
@@ -274,7 +275,7 @@ function finish(){
         const items=snap.val();
 
         if(idx>=items.length){
-          showWin("🏁 全部拍完");
+          show("🏁 結束");
           return;
         }
 
@@ -293,7 +294,7 @@ function finish(){
   });
 }
 
-// 顯示歷史
+// 歷史顯示
 db.ref("history").on("value",snap=>{
   const data=snap.val();
   if(!data){
