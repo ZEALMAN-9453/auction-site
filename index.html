@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（最終完整版）</title>
+<title>拍賣系統（最終穩定版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -14,7 +14,6 @@ body{
   font-family:Arial;
   background:url("bg.png") no-repeat center center fixed;
   background-size:cover;
-
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -95,23 +94,11 @@ input{
   <div id="history"></div>
 </div>
 
-<div class="box">
-  <h3>管理員登入</h3>
-  <input id="adminPwd" type="password">
-  <button onclick="adminLogin()">登入</button>
-</div>
-
-<div class="box" id="adminPanel" style="display:none;">
-  <h3>管理員後台</h3>
-  <div id="itemsEditor"></div>
-  <button onclick="saveItems()">儲存商品</button>
-  <button onclick="startAll()">開始5連拍</button>
-</div>
-
 <div id="winEffect"></div>
 
 <script>
 
+// Firebase
 var config={
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
@@ -120,31 +107,20 @@ var config={
 firebase.initializeApp(config);
 var db=firebase.database();
 
-const ADMIN_PASSWORD="800430";
-let isAdmin=false;
-
 // 登入
 function login(){
   firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
 firebase.auth().onAuthStateChanged(u=>{
-  if(u) user.innerText="👤 "+u.displayName;
+  if(u) document.getElementById("user").innerText="👤 "+u.displayName;
 });
-
-// 管理員
-function adminLogin(){
-  if(adminPwd.value===ADMIN_PASSWORD){
-    isAdmin=true;
-    adminPanel.style.display="block";
-    loadItemsEditor();
-  }
-}
 
 // 動畫
 function showEffect(n,p){
-  winEffect.innerText=`🔥 ${n} 搶標成功 $${p}`;
-  winEffect.classList.add("show");
-  setTimeout(()=>winEffect.classList.remove("show"),1000);
+  const el=document.getElementById("winEffect");
+  el.innerText=`🔥 ${n} 搶標成功 $${p}`;
+  el.classList.add("show");
+  setTimeout(()=>el.classList.remove("show"),1000);
 }
 
 // UI同步
@@ -153,9 +129,9 @@ db.ref("auction").on("value",snap=>{
   const d=snap.val();
   if(!d)return;
 
-  item.innerText=d.item;
-  price.innerText=d.price;
-  name.innerText=d.name;
+  item.innerText=d.item||"";
+  price.innerText=d.price||0;
+  name.innerText=d.name||"無";
 
   if(d.price>lastPrice){
     showEffect(d.name,d.price);
@@ -198,7 +174,7 @@ function bid(){
   });
 }
 
-// 🔥 關鍵：自動跳下一個
+// 結束＋跳下一個
 function finishAuction(){
   const ref=db.ref("auction");
 
@@ -211,11 +187,11 @@ function finishAuction(){
 
     const d=snap.val();
 
-    // 存歷史
+    // 存歷史（一定有資料）
     db.ref("history").push({
-      item:d.item,
-      name:d.name,
-      price:d.price,
+      item:d.item||"未知",
+      name:d.name||"無",
+      price:d.price||0,
       time:Date.now()
     });
 
@@ -249,74 +225,44 @@ function finishAuction(){
   });
 }
 
-// 歷史顯示
+// 🔥 歷史顯示（完全穩定版）
 db.ref("history").on("value",snap=>{
-  const data=snap.val();
+
+  const data = snap.val();
+
   if(!data){
+    history.innerHTML = "<p>尚無紀錄</p>";
+    return;
+  }
+
+  let arr = [];
+
+  for(let key in data){
+    const h = data[key];
+
+    if(!h || !h.item || !h.name) continue;
+
+    arr.push({
+      item:h.item,
+      name:h.name,
+      price:h.price||0,
+      time:h.time||0
+    });
+  }
+
+  if(arr.length===0){
     history.innerHTML="<p>尚無紀錄</p>";
     return;
   }
 
-  let arr=[];
-  for(let k in data){
-    arr.push(data[k]);
-  }
+  arr.sort((a,b)=>b.time-a.time);
 
-  history.innerHTML=arr.reverse().slice(0,10)
-    .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`).join("");
+  history.innerHTML =
+    arr.slice(0,10)
+       .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
+       .join("");
+
 });
-
-// 商品編輯
-function loadItemsEditor(){
-  db.ref("items").once("value").then(s=>{
-    let items=s.val()||[
-      {item:"裝備1",time:60},
-      {item:"裝備2",time:60},
-      {item:"裝備3",time:60},
-      {item:"裝備4",time:60},
-      {item:"裝備5",time:60}
-    ];
-
-    itemsEditor.innerHTML=items.map((it,i)=>`
-      <div>
-        <input id="item_${i}" value="${it.item}">
-        <input id="time_${i}" value="${it.time}">
-      </div>
-    `).join("");
-  });
-}
-
-// 儲存商品
-function saveItems(){
-  let items=[];
-  for(let i=0;i<5;i++){
-    items.push({
-      item:document.getElementById("item_"+i).value,
-      time:parseInt(document.getElementById("time_"+i).value)
-    });
-  }
-  db.ref("items").set(items);
-}
-
-// 開始拍賣
-function startAll(){
-  db.ref("items").once("value").then(s=>{
-    const items=s.val();
-    if(!items)return;
-
-    db.ref("currentIndex").set(0);
-
-    const f=items[0];
-
-    db.ref("auction").set({
-      item:f.item,
-      price:0,
-      name:"無",
-      endAt:Date.now()+f.time*1000,
-      ended:false
-    });
-  });
-}
 
 </script>
 
