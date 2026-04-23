@@ -2,28 +2,21 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統</title>
+<title>拍賣系統（固定5輪播）</title>
 
-<!-- Firebase -->
+<!-- Firebase v8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
-
 <style>
-
-/* ===== 背景 ===== */
 body {
   margin:0;
-  font-family: 'Orbitron', Arial;
+  font-family: Arial;
   text-align:center;
-
   background: url("bg.png") no-repeat center center fixed;
   background-size: cover;
 }
-
-/* 黑遮罩 */
 body::before {
   content:"";
   position:fixed;
@@ -33,79 +26,29 @@ body::before {
   z-index:-1;
 }
 
-/* ===== LOGO ===== */
-.logo {
-  margin-top:20px;
-}
-
-.logo img {
-  width:300px;
-  animation: glow 2s infinite alternate;
-}
-
-@keyframes glow {
-  from { filter: drop-shadow(0 0 10px #fff); }
-  to { filter: drop-shadow(0 0 30px #00f0ff); }
-}
-
-/* ===== 卡片 ===== */
 .box {
   background: rgba(255,255,255,0.1);
-  backdrop-filter: blur(15px);
+  backdrop-filter: blur(10px);
   color:white;
   padding:20px;
   margin:20px auto;
   width:340px;
   border-radius:15px;
-  box-shadow:0 0 20px rgba(0,255,255,0.3);
 }
 
-/* ===== 文字 ===== */
-h2 { color:#00f0ff; text-shadow:0 0 10px #00f0ff; }
-p { font-size:16px; }
-
-/* ===== 輸入 ===== */
-input {
-  width:90%;
-  padding:10px;
-  margin:5px;
-  border:none;
-  border-radius:10px;
-}
-
-/* ===== 按鈕 ===== */
 button {
   padding:10px 20px;
   border:none;
   border-radius:20px;
   background: linear-gradient(45deg,#00f0ff,#7a00ff);
   color:white;
-  font-weight:bold;
   cursor:pointer;
-  transition:0.2s;
 }
-
-button:hover {
-  transform:scale(1.1);
-  box-shadow:0 0 20px #00f0ff;
-}
-
-/* 排行榜 */
-#rank p {
-  text-shadow:0 0 5px #fff;
-}
-
 </style>
 </head>
 
 <body>
 
-<!-- LOGO -->
-<div class="logo">
-  <img src="bg.png">
-</div>
-
-<!-- 拍賣 -->
 <div class="box">
   <h2 id="item">拍賣商品</h2>
   <p>最高價：<span id="price">0</span></p>
@@ -119,28 +62,22 @@ button:hover {
   <button onclick="bid()">出價</button>
 </div>
 
-<!-- 排行榜 -->
 <div class="box">
-  <h3>排行榜 TOP 5</h3>
+  <h3>排行榜</h3>
   <div id="rank"></div>
 </div>
 
-<!-- 管理員 -->
 <div class="box">
-  <h3>管理員登入</h3>
-  <input id="adminPass" type="password">
-  <button onclick="adminLogin()">登入</button>
+  <h3>得標紀錄</h3>
+  <div id="history"></div>
 </div>
 
-<div class="box" id="adminBox" style="display:none;">
-  <h3>管理員控制</h3>
-  <input id="setItem" placeholder="商品名稱">
-  <input id="setTime" type="number" placeholder="秒數">
-  <button onclick="startAuction()">開始拍賣</button>
+<div class="box">
+  <h3>管理員</h3>
+  <button onclick="startAll()">開始5連拍</button>
 </div>
 
 <script>
-
 // Firebase
 var firebaseConfig = {
   apiKey: "AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
@@ -167,31 +104,36 @@ firebase.auth().onAuthStateChanged(user=>{
 db.ref("auction").on("value",snap=>{
   const d=snap.val();
   if(!d)return;
-  document.getElementById("item").innerText="拍賣："+d.item;
-  document.getElementById("price").innerText=d.price;
-  document.getElementById("name").innerText=d.name;
+  item.innerText=d.item;
+  price.innerText=d.price;
+  name.innerText=d.name;
 });
 
-// 倒數
+// 倒數 + 自動換
 setInterval(()=>{
   db.ref("auction").once("value").then(s=>{
     const d=s.val();
     if(!d||!d.endAt)return;
+
     const left=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
-    document.getElementById("time").innerText=left;
+    time.innerText=left;
+
+    if(left<=0 && !d.ended){
+      finishAuction(d);
+    }
   });
 },1000);
 
-// 出價 + 延長
+// 出價
 function bid(){
   const user=firebase.auth().currentUser;
   if(!user)return alert("先登入");
 
-  const price=parseInt(document.getElementById("bidInput").value);
+  const priceVal=parseInt(bidInput.value);
 
   db.ref("auction").once("value").then(s=>{
     const d=s.val();
-    if(price<=d.price)return;
+    if(priceVal<=d.price)return;
 
     let endAt=d.endAt;
     const left=Math.floor((d.endAt-Date.now())/1000);
@@ -201,15 +143,79 @@ function bid(){
     }
 
     db.ref("auction").update({
-      price:price,
+      price:priceVal,
       name:user.displayName,
       endAt:endAt
     });
 
     db.ref("auction/bids/"+user.uid).set({
-      price:price,
+      price:priceVal,
       name:user.displayName
     });
+  });
+}
+
+// 🔥 結束 → 自動下一個
+function finishAuction(d){
+
+  db.ref("history").push({
+    item:d.item,
+    name:d.name,
+    price:d.price
+  });
+
+  db.ref("currentIndex").once("value").then(iSnap=>{
+    let i=iSnap.val()+1;
+
+    db.ref("items").once("value").then(snap=>{
+      const items=snap.val();
+
+      if(i>=items.length){
+        alert("全部拍完");
+        db.ref("auction/ended").set(true);
+        return;
+      }
+
+      const next=items[i];
+
+      db.ref("currentIndex").set(i);
+
+      db.ref("auction").set({
+        item:next.item,
+        price:0,
+        name:"無",
+        endAt:Date.now()+next.time*1000,
+        ended:false,
+        bids:{}
+      });
+
+    });
+  });
+}
+
+// 🔥 開始全部
+function startAll(){
+
+  const items=[
+    {item:"裝備1",time:60},
+    {item:"裝備2",time:60},
+    {item:"裝備3",time:60},
+    {item:"裝備4",time:60},
+    {item:"裝備5",time:60}
+  ];
+
+  db.ref("items").set(items);
+  db.ref("currentIndex").set(0);
+
+  const first=items[0];
+
+  db.ref("auction").set({
+    item:first.item,
+    price:0,
+    name:"無",
+    endAt:Date.now()+first.time*1000,
+    ended:false,
+    bids:{}
   });
 }
 
@@ -222,36 +228,25 @@ db.ref("auction/bids").on("value",snap=>{
   arr.sort((a,b)=>b.price-a.price);
 
   let html="";
-  arr.slice(0,5).forEach((u,i)=>{
-    html+=`<p>${i+1}. ${u.name} - ${u.price}</p>`;
+  arr.forEach(u=>{
+    html+=`<p>${u.name} - ${u.price}</p>`;
   });
 
-  document.getElementById("rank").innerHTML=html;
+  rank.innerHTML=html;
 });
 
-// 管理員
-const ADMIN_PASSWORD="123456";
+// 得標紀錄
+db.ref("history").on("value",snap=>{
+  const data=snap.val();
+  if(!data)return;
 
-function adminLogin(){
-  if(document.getElementById("adminPass").value===ADMIN_PASSWORD){
-    document.getElementById("adminBox").style.display="block";
-  }
-}
-
-function startAuction(){
-  const item=document.getElementById("setItem").value;
-  const time=parseInt(document.getElementById("setTime").value);
-
-  db.ref("auction").set({
-    item:item,
-    price:0,
-    name:"無",
-    endAt:Date.now()+time*1000,
-    ended:false,
-    bids:{}
+  let html="";
+  Object.values(data).reverse().forEach(h=>{
+    html+=`<p>${h.item} - ${h.name} (${h.price})</p>`;
   });
-}
 
+  history.innerHTML=html;
+});
 </script>
 
 </body>
