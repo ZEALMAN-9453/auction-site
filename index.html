@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（動畫完整版）</title>
+<title>拍賣系統（最終穩定版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -37,11 +37,10 @@ button{
   border-radius:20px;
   background:linear-gradient(45deg,#00f0ff,#7a00ff);
   color:white;
-  cursor:pointer;
 }
 input{padding:8px;margin:5px}
 
-/* 🔥 搶標動畫 */
+/* 搶標動畫 */
 #winEffect{
   position:fixed;
   top:40%;
@@ -50,11 +49,9 @@ input{padding:8px;margin:5px}
   color:#fff;
   font-size:34px;
   font-weight:bold;
-  text-shadow:0 0 20px gold,0 0 40px #ff0;
+  text-shadow:0 0 20px gold;
   opacity:0;
-  pointer-events:none;
-  transition:all .3s ease;
-  z-index:9999;
+  transition:.3s;
 }
 #winEffect.show{
   opacity:1;
@@ -79,7 +76,7 @@ input{padding:8px;margin:5px}
 </div>
 
 <div class="box">
-  <h3>得標紀錄（只保留5筆）</h3>
+  <h3>得標紀錄（顯示5筆）</h3>
   <div id="history"></div>
 </div>
 
@@ -96,7 +93,6 @@ input{padding:8px;margin:5px}
   <button onclick="startAll()">開始5連拍</button>
 </div>
 
-<!-- 🔥 動畫層 -->
 <div id="winEffect"></div>
 
 <script>
@@ -131,15 +127,14 @@ function adminLogin(){
   }
 }
 
-// 🔥 動畫
+// 動畫
 function showWinEffect(name,price){
-  const el=document.getElementById("winEffect");
-  el.innerText=`🔥 ${name} 搶標成功！ $${price}`;
-  el.classList.add("show");
-  setTimeout(()=>el.classList.remove("show"),1200);
+  winEffect.innerText=`🔥 ${name} 搶標成功 $${price}`;
+  winEffect.classList.add("show");
+  setTimeout(()=>winEffect.classList.remove("show"),1200);
 }
 
-// UI同步 + 動畫
+// UI同步
 let lastPrice=0;
 
 db.ref("auction").on("value",snap=>{
@@ -150,7 +145,6 @@ db.ref("auction").on("value",snap=>{
   price.innerText=d.price;
   name.innerText=d.name;
 
-  // 🔥 價格變才觸發
   if(d.price>lastPrice){
     showWinEffect(d.name,d.price);
   }
@@ -163,14 +157,15 @@ setInterval(async ()=>{
   const d=(await db.ref("auction").once("value")).val();
   if(!d||!d.endAt)return;
 
-  time.innerText=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
+  const left=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
+  time.innerText=left;
 
-  if(time.innerText<=0 && !d.ended){
+  if(left<=0 && !d.ended){
     finishAuction();
   }
 },1000);
 
-// 出價（防搶）
+// 出價
 function bid(){
   const u=firebase.auth().currentUser;
   if(!u)return alert("請登入");
@@ -188,11 +183,12 @@ function bid(){
     if((d.endAt-Date.now())/1000<=10){
       d.endAt+=30000;
     }
+
     return d;
   });
 }
 
-// 結束（防重複）
+// 結束（不刪歷史）
 function finishAuction(){
   const ref=db.ref("auction");
 
@@ -202,20 +198,18 @@ function finishAuction(){
     return d;
   },(e,ok,snap)=>{
     if(!ok)return;
+
     const d=snap.val();
 
-    db.ref("history").push(d).then(()=>{
-      db.ref("history").once("value").then(s=>{
-        let keys=Object.keys(s.val()||{});
-        while(keys.length>5){
-          db.ref("history/"+keys.shift()).remove();
-        }
-      });
+    db.ref("history").push({
+      item:d.item,
+      name:d.name,
+      price:d.price
     });
   });
 }
 
-// 歷史顯示
+// 🔥 歷史只顯示5筆（不刪DB）
 db.ref("history").on("value",snap=>{
   const d=snap.val();
   if(!d)return;
@@ -247,7 +241,7 @@ function loadItemsEditor(){
   });
 }
 
-// 儲存（含同步）
+// 儲存（同步當前）
 function saveItems(){
   let items=[];
   for(let i=0;i<5;i++){
