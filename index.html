@@ -2,9 +2,9 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（固定5輪播）</title>
+<title>拍賣系統（穩定版）</title>
 
-<!-- Firebase v8 -->
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -88,7 +88,7 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
 
-// 登入
+// ===== 登入 =====
 function login(){
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider);
@@ -100,46 +100,50 @@ firebase.auth().onAuthStateChanged(user=>{
   }
 });
 
-// 同步
+// ===== UI同步 =====
 db.ref("auction").on("value",snap=>{
   const d=snap.val();
   if(!d)return;
-  item.innerText=d.item;
-  price.innerText=d.price;
-  name.innerText=d.name;
+
+  document.getElementById("item").innerText = d.item;
+  document.getElementById("price").innerText = d.price;
+  document.getElementById("name").innerText = d.name;
 });
 
-// 倒數 + 自動換
-setInterval(()=>{
-  db.ref("auction").once("value").then(s=>{
-    const d=s.val();
-    if(!d||!d.endAt)return;
+// ===== 倒數（穩定）=====
+setInterval(async ()=>{
+  const snap = await db.ref("auction").once("value");
+  const d = snap.val();
+  if(!d || !d.endAt) return;
 
-    const left=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
-    time.innerText=left;
+  const left = Math.max(0, Math.floor((d.endAt - Date.now())/1000));
+  document.getElementById("time").innerText = left;
 
-    if(left<=0 && !d.ended){
-      finishAuction(d);
-    }
-  });
+  if(left <= 0 && !d.ended){
+    finishAuction(d);
+  }
 },1000);
 
-// 出價
+// ===== 出價 =====
 function bid(){
   const user=firebase.auth().currentUser;
-  if(!user)return alert("先登入");
+  if(!user) return alert("請先登入");
 
-  const priceVal=parseInt(bidInput.value);
+  const input = document.getElementById("bidInput").value;
+  const priceVal = parseInt(input);
+
+  if(isNaN(priceVal)) return;
 
   db.ref("auction").once("value").then(s=>{
     const d=s.val();
-    if(priceVal<=d.price)return;
+    if(priceVal <= d.price) return;
 
-    let endAt=d.endAt;
-    const left=Math.floor((d.endAt-Date.now())/1000);
+    let endAt = d.endAt;
+    const left = Math.floor((d.endAt - Date.now())/1000);
 
-    if(left<=10){
-      endAt+=30000;
+    // 最後10秒延長
+    if(left <= 10){
+      endAt += 30000;
     }
 
     db.ref("auction").update({
@@ -155,7 +159,7 @@ function bid(){
   });
 }
 
-// 🔥 結束 → 自動下一個
+// ===== 結束 → 下一個 =====
 function finishAuction(d){
 
   db.ref("history").push({
@@ -165,18 +169,18 @@ function finishAuction(d){
   });
 
   db.ref("currentIndex").once("value").then(iSnap=>{
-    let i=iSnap.val()+1;
+    let i = (iSnap.val() || 0) + 1;
 
     db.ref("items").once("value").then(snap=>{
-      const items=snap.val();
+      const items = snap.val();
 
-      if(i>=items.length){
+      if(!items || i >= items.length){
         alert("全部拍完");
         db.ref("auction/ended").set(true);
         return;
       }
 
-      const next=items[i];
+      const next = items[i];
 
       db.ref("currentIndex").set(i);
 
@@ -188,12 +192,11 @@ function finishAuction(d){
         ended:false,
         bids:{}
       });
-
     });
   });
 }
 
-// 🔥 開始全部
+// ===== 開始5連拍 =====
 function startAll(){
 
   const items=[
@@ -219,10 +222,13 @@ function startAll(){
   });
 }
 
-// 排行榜
+// ===== 排行榜 =====
 db.ref("auction/bids").on("value",snap=>{
   const data=snap.val();
-  if(!data)return;
+  if(!data){
+    document.getElementById("rank").innerHTML="";
+    return;
+  }
 
   let arr=Object.values(data);
   arr.sort((a,b)=>b.price-a.price);
@@ -232,20 +238,23 @@ db.ref("auction/bids").on("value",snap=>{
     html+=`<p>${u.name} - ${u.price}</p>`;
   });
 
-  rank.innerHTML=html;
+  document.getElementById("rank").innerHTML = html;
 });
 
-// 得標紀錄
+// ===== 得標紀錄 =====
 db.ref("history").on("value",snap=>{
   const data=snap.val();
-  if(!data)return;
+  if(!data){
+    document.getElementById("history").innerHTML="";
+    return;
+  }
 
   let html="";
   Object.values(data).reverse().forEach(h=>{
     html+=`<p>${h.item} - ${h.name} (${h.price})</p>`;
   });
 
-  history.innerHTML=html;
+  document.getElementById("history").innerHTML = html;
 });
 </script>
 
