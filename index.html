@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（穩定完整版）</title>
+<title>拍賣系統（最終穩定版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -13,7 +13,6 @@ body{
   margin:0;
   font-family:Arial;
   background:url("bg.png") no-repeat center/cover fixed;
-
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -28,13 +27,14 @@ body{
   margin:10px 0;
   width:360px;
   border-radius:15px;
+  text-align:center;
 }
 
 button{
   padding:10px 20px;
   border:none;
   border-radius:20px;
-  background:#00bfff;
+  background:linear-gradient(45deg,#00f0ff,#7a00ff);
   color:white;
 }
 
@@ -43,54 +43,68 @@ input{
   margin:5px;
   width:80%;
 }
+
+#winEffect{
+  position:fixed;
+  top:40%;
+  left:50%;
+  transform:translate(-50%,-50%) scale(0.5);
+  font-size:32px;
+  color:gold;
+  opacity:0;
+  transition:.3s;
+}
+#winEffect.show{
+  opacity:1;
+  transform:translate(-50%,-50%) scale(1.3);
+}
 </style>
 </head>
 
 <body>
 
-<!-- 拍賣 -->
 <div class="box">
   <h2 id="item">拍賣商品</h2>
-  <p>價格：<span id="price">0</span></p>
+  <p>最高價：<span id="price">0</span></p>
   <p>出價者：<span id="name">無</span></p>
-  <p>剩餘：<span id="time">0</span> 秒</p>
+  <p>剩餘時間：<span id="time">0</span> 秒</p>
 
-  <button onclick="login()">登入</button>
+  <button onclick="login()">Google登入</button>
   <p id="user"></p>
 
   <input id="bidInput" type="number">
   <button onclick="bid()">出價</button>
 </div>
 
-<!-- 歷史 -->
 <div class="box">
-  <h3>得標紀錄</h3>
+  <h3>得標紀錄（10筆）</h3>
   <div id="history"></div>
 </div>
 
-<!-- 🔥 管理員（永遠存在） -->
 <div class="box">
   <h3>管理員登入</h3>
-  <input id="adminPwd" type="password" placeholder="輸入密碼">
+  <input id="adminPwd" type="password">
   <button onclick="adminLogin()">登入</button>
 </div>
 
-<!-- 🔥 後台（預設隱藏） -->
 <div class="box" id="adminPanel" style="display:none;">
   <h3>管理員後台</h3>
-  <button onclick="startAll()">開始拍賣</button>
+  <div id="itemsEditor"></div>
+  <button onclick="saveItems()">儲存商品</button>
+  <button onclick="startAll()">開始5連拍</button>
 </div>
+
+<div id="winEffect"></div>
 
 <script>
 
 // Firebase
-var config={
+firebase.initializeApp({
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
   databaseURL:"https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app"
-};
-firebase.initializeApp(config);
-var db=firebase.database();
+});
+const db=firebase.database();
 
 const ADMIN_PASSWORD="800430";
 
@@ -99,37 +113,53 @@ function login(){
   firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
 firebase.auth().onAuthStateChanged(u=>{
-  if(u) user.innerText=u.displayName;
+  if(u) user.innerText="👤 "+u.displayName;
 });
 
-// 管理員登入（🔥這裡是關鍵）
+// 管理員
 function adminLogin(){
-  const pwd=document.getElementById("adminPwd").value;
-
-  if(pwd===ADMIN_PASSWORD){
-    document.getElementById("adminPanel").style.display="block";
-    alert("登入成功");
+  if(adminPwd.value===ADMIN_PASSWORD){
+    adminPanel.style.display="block";
+    loadItemsEditor();
   }else{
     alert("密碼錯誤");
   }
 }
 
 // UI同步
+let lastPrice=0;
 db.ref("auction").on("value",snap=>{
   const d=snap.val();
   if(!d)return;
 
-  item.innerText=d.item;
-  price.innerText=d.price;
-  name.innerText=d.name;
+  item.innerText=d.item||"";
+  price.innerText=d.price||0;
+  name.innerText=d.name||"無";
+
+  if(d.price>lastPrice){
+    showWin(d.name,d.price);
+  }
+  lastPrice=d.price;
 });
+
+// 動畫
+function showWin(n,p){
+  winEffect.innerText=`🔥 ${n} 搶標成功 $${p}`;
+  winEffect.classList.add("show");
+  setTimeout(()=>winEffect.classList.remove("show"),1000);
+}
 
 // 倒數
 setInterval(async ()=>{
   const d=(await db.ref("auction").once("value")).val();
   if(!d||!d.endAt)return;
 
-  time.innerText=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
+  const t=Math.max(0,Math.floor((d.endAt-Date.now())/1000));
+  time.innerText=t;
+
+  if(t<=0 && !d.ended){
+    finishAuction();
+  }
 },1000);
 
 // 出價
@@ -146,35 +176,138 @@ function bid(){
 
     d.price=val;
     d.name=u.displayName;
+
+    if((d.endAt-Date.now())/1000<=10){
+      d.endAt+=30000;
+    }
+
     return d;
   });
 }
 
-// 歷史顯示
+// 結束＋跳下一個（核心）
+function finishAuction(){
+
+  const ref=db.ref("auction");
+
+  ref.transaction(d=>{
+    if(!d||d.ended)return;
+    d.ended=true;
+    return d;
+  },(e,ok,snap)=>{
+    if(!ok)return;
+
+    const d=snap.val();
+
+    // 存歷史
+    db.ref("history").push({
+      item:d.item||"未知",
+      name:d.name||"無",
+      price:d.price||0,
+      time:Date.now()
+    });
+
+    // 下一個
+    db.ref("currentIndex").once("value").then(s=>{
+      let idx=s.val()||0;
+      idx++;
+
+      db.ref("items").once("value").then(snap=>{
+        const items=snap.val();
+
+        if(!items||idx>=items.length){
+          alert("全部拍完");
+          return;
+        }
+
+        const next=items[idx];
+
+        db.ref("currentIndex").set(idx);
+
+        db.ref("auction").set({
+          item:next.item,
+          price:0,
+          name:"無",
+          endAt:Date.now()+next.time*1000,
+          ended:false
+        });
+      });
+    });
+
+  });
+}
+
+// 歷史顯示（穩定）
 db.ref("history").on("value",snap=>{
   const data=snap.val();
   if(!data){
-    history.innerHTML="無紀錄";
+    history.innerHTML="尚無紀錄";
     return;
   }
 
   let arr=[];
   for(let k in data){
-    arr.push(data[k]);
+    const h=data[k];
+    if(!h||!h.item)continue;
+    arr.push(h);
   }
 
-  history.innerHTML=arr.slice(-10).reverse()
-    .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`).join("");
+  arr.sort((a,b)=>b.time-a.time);
+
+  history.innerHTML=arr.slice(0,10)
+    .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
+    .join("");
 });
 
-// 開始拍賣
+// 商品編輯
+function loadItemsEditor(){
+  db.ref("items").once("value").then(s=>{
+    let items=s.val()||[
+      {item:"裝備1",time:60},
+      {item:"裝備2",time:60},
+      {item:"裝備3",time:60},
+      {item:"裝備4",time:60},
+      {item:"裝備5",time:60}
+    ];
+
+    itemsEditor.innerHTML=items.map((it,i)=>`
+      <div>
+        <input id="item_${i}" value="${it.item}">
+        <input id="time_${i}" value="${it.time}">
+      </div>
+    `).join("");
+  });
+}
+
+// 儲存商品
+function saveItems(){
+  let items=[];
+  for(let i=0;i<5;i++){
+    items.push({
+      item:document.getElementById("item_"+i).value,
+      time:parseInt(document.getElementById("time_"+i).value)
+    });
+  }
+  db.ref("items").set(items);
+}
+
+// 開始5連拍
 function startAll(){
-  db.ref("auction").set({
-    item:"測試商品",
-    price:0,
-    name:"無",
-    endAt:Date.now()+60000,
-    ended:false
+  db.ref("items").once("value").then(s=>{
+    const items=s.val();
+    if(!items)return alert("沒有商品");
+
+    db.ref("currentIndex").set(0);
+
+    const f=items[0];
+
+    db.ref("auction").set({
+      item:f.item,
+      price:0,
+      name:"無",
+      endAt:Date.now()+f.time*1000,
+      ended:false
+    });
   });
 }
 
