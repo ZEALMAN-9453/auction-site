@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>拍賣系統</title>
 
-<!-- Firebase -->
+<!-- Firebase v8 -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -59,7 +59,7 @@ button { padding:10px 20px; margin-top:10px; cursor:pointer; }
 </div>
 
 <script>
-// 🔥 Firebase（你的設定）
+// ===== Firebase 設定（已幫你填）=====
 var firebaseConfig = {
   apiKey: "AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain: "auction-app-e04f8.firebaseapp.com",
@@ -69,20 +69,20 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
 
-// 🔐 Google登入
+// ===== 登入 =====
 function login() {
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider);
 }
 
-// 顯示使用者
+// 顯示登入者
 firebase.auth().onAuthStateChanged(user => {
   if (user) {
     document.getElementById("user").innerText = "👤 " + user.displayName;
   }
 });
 
-// 📡 同步拍賣
+// ===== 同步拍賣資料 =====
 db.ref("auction").on("value", snap => {
   const d = snap.val();
   if (!d) return;
@@ -93,7 +93,7 @@ db.ref("auction").on("value", snap => {
   document.getElementById("time").innerText = d.time;
 });
 
-// 💰 出價
+// ===== 出價 =====
 function bid() {
   const user = firebase.auth().currentUser;
   if (!user) return alert("請先登入");
@@ -102,21 +102,21 @@ function bid() {
 
   db.ref("auction").once("value").then(snap => {
     const d = snap.val();
-    if (price <= d.price) return alert("要更高");
+    if (!d || price <= d.price) return alert("要更高");
 
     db.ref("auction").update({
       price: price,
       name: user.displayName
     });
 
-    // 存 bids
+    // 排行榜
     db.ref("auction/bids/" + user.uid).set({
       price: price
     });
   });
 }
 
-// ⏱️ 倒數
+// ===== 倒數 =====
 setInterval(() => {
   db.ref("auction").once("value").then(snap => {
     const d = snap.val();
@@ -128,7 +128,7 @@ setInterval(() => {
   });
 }, 1000);
 
-// 🔥 強制建立 bids（解決你之前卡的）
+// ===== 強制建立 bids（解決你之前卡住）=====
 db.ref("auction/bids").once("value").then(snap => {
   if (!snap.exists()) {
     db.ref("auction/bids").set({init:1}).then(()=>{
@@ -137,7 +137,7 @@ db.ref("auction/bids").once("value").then(snap => {
   }
 });
 
-// 🏆 排行榜
+// ===== 排行榜 =====
 db.ref("auction/bids").on("value", snap => {
   const data = snap.val();
   if (!data) return;
@@ -157,7 +157,7 @@ db.ref("auction/bids").on("value", snap => {
   document.getElementById("rank").innerHTML = html;
 });
 
-// 🔐 管理員（密碼版）
+// ===== 管理員（密碼版）=====
 const ADMIN_PASSWORD = "123456";
 
 function adminLogin() {
@@ -171,7 +171,7 @@ function adminLogin() {
   }
 }
 
-// 🛠️ 開始拍賣
+// ===== 開始拍賣 =====
 function startAuction() {
   const item = document.getElementById("setItem").value;
   const time = parseInt(document.getElementById("setTime").value);
