@@ -2,9 +2,8 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（最終穩定版）</title>
+<title>拍賣系統（最終完整版）</title>
 
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
@@ -67,18 +66,16 @@ input { padding:8px; margin:5px; }
 </div>
 
 <div class="box">
-  <h3>得標紀錄</h3>
+  <h3>得標紀錄（只保留5筆）</h3>
   <div id="history"></div>
 </div>
 
-<!-- 管理員登入 -->
 <div class="box">
   <h3>管理員登入</h3>
   <input id="adminPwd" type="password" placeholder="輸入密碼">
   <button onclick="adminLogin()">登入</button>
 </div>
 
-<!-- 管理員後台 -->
 <div class="box" id="adminPanel" style="display:none;">
   <h3>管理員後台</h3>
   <div id="itemsEditor"></div>
@@ -88,7 +85,7 @@ input { padding:8px; margin:5px; }
 
 <script>
 
-// ===== Firebase =====
+// Firebase
 var firebaseConfig = {
   apiKey: "AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain: "auction-app-e04f8.firebaseapp.com",
@@ -98,11 +95,10 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
 
-// ===== 管理員 =====
 const ADMIN_PASSWORD = "800430";
 let isAdmin = false;
 
-// ===== 登入 =====
+// 登入
 function login(){
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider);
@@ -114,29 +110,29 @@ firebase.auth().onAuthStateChanged(user=>{
   }
 });
 
-// ===== 管理員登入 =====
+// 管理員登入
 function adminLogin(){
   const pwd = document.getElementById("adminPwd").value.trim();
   if(pwd === ADMIN_PASSWORD){
     isAdmin = true;
     document.getElementById("adminPanel").style.display = "block";
-    alert("登入成功");
     loadItemsEditor();
   }else{
     alert("密碼錯誤");
   }
 }
 
-// ===== UI同步 =====
+// UI同步
 db.ref("auction").on("value",snap=>{
   const d=snap.val();
   if(!d)return;
+
   document.getElementById("item").innerText = d.item || "";
   document.getElementById("price").innerText = d.price || 0;
   document.getElementById("name").innerText = d.name || "無";
 });
 
-// ===== 倒數 =====
+// 倒數
 setInterval(async ()=>{
   const snap = await db.ref("auction").once("value");
   const d = snap.val();
@@ -150,7 +146,7 @@ setInterval(async ()=>{
   }
 },1000);
 
-// ===== 🔥 出價（transaction 防搶標）=====
+// 出價（transaction）
 function bid(){
 
   const user = firebase.auth().currentUser;
@@ -170,7 +166,7 @@ function bid(){
     if(!d) return d;
 
     if(priceVal <= d.price){
-      return; // 拒絕
+      return;
     }
 
     d.price = priceVal;
@@ -193,13 +189,27 @@ function bid(){
 
 }
 
-// ===== 自動下一個 =====
+// 🔥 結束 → 下一個（含只留5筆）
 function finishAuction(d){
 
   db.ref("history").push({
     item:d.item,
     name:d.name,
     price:d.price
+  }).then(()=>{
+
+    db.ref("history").once("value").then(snap=>{
+      const data = snap.val();
+      if(!data) return;
+
+      const keys = Object.keys(data);
+
+      if(keys.length > 5){
+        const removeKey = keys[0];
+        db.ref("history/" + removeKey).remove();
+      }
+    });
+
   });
 
   db.ref("currentIndex").once("value").then(iSnap=>{
@@ -230,7 +240,7 @@ function finishAuction(d){
   });
 }
 
-// ===== 開始5連拍 =====
+// 開始
 function startAll(){
 
   if(!isAdmin){
@@ -257,9 +267,8 @@ function startAll(){
   });
 }
 
-// ===== 編輯商品 =====
+// 編輯商品
 function loadItemsEditor(){
-
   db.ref("items").once("value").then(snap=>{
     let items = snap.val() || [
       {item:"裝備1",time:60},
@@ -284,7 +293,7 @@ function loadItemsEditor(){
   });
 }
 
-// ===== 儲存商品 =====
+// 儲存商品
 function saveItems(){
 
   if(!isAdmin){
@@ -311,7 +320,7 @@ function saveItems(){
   });
 }
 
-// ===== 排行榜 =====
+// 排行榜
 db.ref("auction/bids").on("value",snap=>{
   const data=snap.val();
   if(!data){
@@ -325,7 +334,7 @@ db.ref("auction/bids").on("value",snap=>{
     arr.map(u=>`<p>${u.name} - ${u.price}</p>`).join("");
 });
 
-// ===== 歷史 =====
+// 歷史顯示
 db.ref("history").on("value",snap=>{
   const data=snap.val();
   if(!data){
