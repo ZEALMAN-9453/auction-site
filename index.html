@@ -6,6 +6,7 @@
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 
 <style>
 body { font-family: Arial; background:#f5f5f5; text-align:center; }
@@ -16,7 +17,6 @@ body { font-family: Arial; background:#f5f5f5; text-align:center; }
 }
 input { width:90%; padding:10px; margin:5px; }
 button { padding:10px 20px; cursor:pointer; }
-
 .rank { text-align:left; }
 </style>
 </head>
@@ -38,13 +38,7 @@ button { padding:10px 20px; cursor:pointer; }
 
 <div class="box">
   <h3>排行榜 🏆</h3>
-  <div id="rank" class="rank"></div>
-</div>
-
-<div class="box">
-  <h3>管理員</h3>
-  <input id="adminPass" placeholder="管理員密碼">
-  <button onclick="startAuction()">開始拍賣</button>
+  <div id="rank"></div>
 </div>
 
 <script>
@@ -57,11 +51,19 @@ var firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
+var auth = firebase.auth();
 
-const ADMIN_PASSWORD = "123456";
+let uid = null;
 
-// 商品池（自動輪播）
-const items = ["PS5","iPhone 15","RTX4090","Switch","MacBook"];
+// 🔐 匿名登入
+auth.signInAnonymously();
+
+auth.onAuthStateChanged(user=>{
+  if(user){
+    uid = user.uid;
+    console.log("UID:", uid);
+  }
+});
 
 // 📡 同步
 db.ref("auction").on("value", snap=>{
@@ -72,30 +74,29 @@ db.ref("auction").on("value", snap=>{
   price.innerText = d.price;
   name.innerText = d.name;
   time.innerText = d.time;
-
-  status.innerText = d.ended ? "拍賣已結束" : "";
 });
 
-// 🏆 排行榜
+// 🏆 排行榜（用UID）
 db.ref("rank").on("value", snap=>{
   const data = snap.val();
   if(!data) return;
 
   let html = "";
-  Object.entries(data)
-    .sort((a,b)=>b[1]-a[1])
-    .forEach(([name,score],i)=>{
-      html += `${i+1}. ${name}（${score}次）<br>`;
+  Object.values(data)
+    .sort((a,b)=>b.score-a.score)
+    .forEach((u,i)=>{
+      html += `${i+1}. ${u.name}（${u.score}次）<br>`;
     });
 
-  document.getElementById("rank").innerHTML = html;
+  rank.innerHTML = html;
 });
 
 // 💰 出價
 function bid(){
-  const username = usernameInput.value;
-  const bidPrice = parseInt(bidInput.value);
+  const username = document.getElementById("username").value.trim();
+  const bidPrice = parseInt(document.getElementById("bid").value);
 
+  if(!uid) return alert("登入中");
   if(!username || !bidPrice) return alert("填資料");
 
   db.ref("auction").once("value").then(snap=>{
@@ -113,9 +114,15 @@ function bid(){
         time: newTime
       });
 
-      // 📊 加入排行榜
-      db.ref("rank/"+username).transaction(v=>{
-        return (v||0)+1;
+      // 🔥 用 UID 記排行榜
+      db.ref("rank/"+uid).transaction(v=>{
+        if(v){
+          v.score += 1;
+          v.name = username;
+          return v;
+        } else {
+          return {name:username, score:1};
+        }
       });
 
     } else {
@@ -124,7 +131,7 @@ function bid(){
   });
 }
 
-// ⏱️ 倒數 + 自動輪播
+// ⏱️ 倒數
 setInterval(()=>{
   db.ref("auction").once("value").then(snap=>{
     const d = snap.val();
@@ -134,42 +141,9 @@ setInterval(()=>{
       db.ref("auction/time").set(d.time-1);
     } else if(!d.ended){
       db.ref("auction/ended").set(true);
-
-      // 🔥 自動下一個商品
-      const next = items[Math.floor(Math.random()*items.length)];
-
-      setTimeout(()=>{
-        db.ref("auction").set({
-          item: next,
-          price: 0,
-          name: "無",
-          time: 60,
-          ended: false
-        });
-      },2000);
     }
   });
 },1000);
-
-// 🧠 開始拍賣（手動）
-function startAuction(){
-  const pass = adminPass.value;
-
-  if(pass !== ADMIN_PASSWORD){
-    alert("錯誤");
-    return;
-  }
-
-  const item = items[Math.floor(Math.random()*items.length)];
-
-  db.ref("auction").set({
-    item:item,
-    price:0,
-    name:"無",
-    time:60,
-    ended:false
-  });
-}
 </script>
 
 </body>
