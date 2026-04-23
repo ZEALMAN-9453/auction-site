@@ -1,144 +1,163 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>拍賣系統</title>
+  <meta charset="UTF-8">
+  <title>拍賣系統</title>
 
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
-<style>
-body { font-family: Arial; background:#f5f5f5; text-align:center; }
-.box { background:white; padding:20px; margin:30px auto; width:340px; border-radius:10px; }
-input { padding:10px; width:80%; margin:5px; }
-button { padding:10px 20px; }
-.log { text-align:left; max-height:150px; overflow:auto; border-top:1px solid #ddd; margin-top:10px; padding-top:10px;}
-</style>
+  <style>
+    body {
+      font-family: Arial;
+      background: #f5f5f5;
+      text-align: center;
+    }
+    .box {
+      background: white;
+      padding: 20px;
+      margin: 20px auto;
+      width: 320px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    input {
+      width: 90%;
+      padding: 10px;
+      margin: 5px;
+    }
+    button {
+      padding: 10px 20px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .admin {
+      border: 2px dashed red;
+    }
+  </style>
 </head>
 
 <body>
 
 <div class="box">
-  <h2>拍賣商品：<span id="item">讀取中...</span></h2>
+  <h2 id="item">拍賣商品</h2>
   <p>最高價：<span id="price">0</span></p>
-  <p>出價者：<span id="user">無</span></p>
-  <p>剩餘時間：<span id="time">60</span> 秒</p>
+  <p>出價者：<span id="name">無</span></p>
+  <p>剩餘時間：<span id="time">0</span> 秒</p>
 
-  <input id="bid" type="number" placeholder="出價"><br>
-  <button onclick="placeBid()">出價</button>
+  <input id="username" placeholder="你的名字">
+  <input id="bid" type="number" placeholder="輸入出價">
+  <button onclick="bid()">出價</button>
 
-  <p id="status"></p>
+  <p id="status" style="color:red;"></p>
+</div>
 
-  <div class="log" id="log"></div>
+<div class="box admin">
+  <h3>管理員</h3>
+  <input id="newItem" placeholder="商品名稱">
+  <button onclick="startAuction()">開始拍賣</button>
 </div>
 
 <script>
-const db = firebase.initializeApp({
-  databaseURL: "https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app"
-}).database();
+  // 🔥🔥🔥 這裡改成你的 Firebase 設定
+  var firebaseConfig = {
+    apiKey: "貼你的",
+    authDomain: "貼你的",
+    databaseURL: "貼你的",
+    projectId: "貼你的",
+  };
 
-// 👤 使用者名稱
-let username = localStorage.getItem("username");
-if(!username){
-  username = prompt("請輸入你的名字");
-  localStorage.setItem("username", username);
-}
+  firebase.initializeApp(firebaseConfig);
+  var db = firebase.database();
 
-// 初始化
-db.ref("auction").once("value").then(snap=>{
-  if(!snap.exists()){
+  // 📡 即時同步
+  db.ref("auction").on("value", snap => {
+    const data = snap.val();
+    if (!data) return;
+
+    document.getElementById("item").innerText = "拍賣商品：" + data.item;
+    document.getElementById("price").innerText = data.price;
+    document.getElementById("name").innerText = data.name;
+    document.getElementById("time").innerText = data.time;
+
+    if (data.ended) {
+      document.getElementById("status").innerText = "拍賣已結束";
+    } else {
+      document.getElementById("status").innerText = "";
+    }
+  });
+
+  // 💰 出價
+  function bid() {
+    const username = document.getElementById("username").value;
+    const bidPrice = parseInt(document.getElementById("bid").value);
+
+    if (!username || !bidPrice) {
+      alert("請填名字與出價");
+      return;
+    }
+
+    db.ref("auction").once("value").then(snap => {
+      const data = snap.val();
+
+      if (data.ended) {
+        alert("已結束");
+        return;
+      }
+
+      if (bidPrice > data.price) {
+        let newTime = data.time;
+
+        // 🔥 最後60秒內出價 → 延長60秒
+        if (data.time <= 60) {
+          newTime += 60;
+        }
+
+        db.ref("auction").update({
+          price: bidPrice,
+          name: username,
+          time: newTime,
+          ended: false
+        });
+
+      } else {
+        alert("出價要更高");
+      }
+    });
+  }
+
+  // ⏱️ 倒數（每秒）
+  setInterval(() => {
+    db.ref("auction").once("value").then(snap => {
+      const data = snap.val();
+      if (!data) return;
+
+      if (data.time > 0) {
+        db.ref("auction/time").set(data.time - 1);
+      } else {
+        db.ref("auction/ended").set(true);
+      }
+    });
+  }, 1000);
+
+  // 🧠 管理員開始拍賣
+  function startAuction() {
+    const item = document.getElementById("newItem").value;
+
+    if (!item) {
+      alert("請輸入商品");
+      return;
+    }
+
     db.ref("auction").set({
+      item: item,
       price: 0,
       name: "無",
       time: 60,
-      item: "鍵盤",
       ended: false
     });
   }
-});
-
-// 監聽
-db.ref("auction").on("value", snap=>{
-  const d = snap.val();
-  if(!d) return;
-
-  document.getElementById("price").innerText = d.price;
-  document.getElementById("user").innerText = d.name;
-  document.getElementById("time").innerText = d.time;
-  document.getElementById("item").innerText = d.item;
-
-  if(d.ended){
-    document.getElementById("status").innerText = "拍賣已結束";
-  }
-});
-
-// 出價紀錄
-db.ref("bids").on("value", snap=>{
-  let html = "";
-  snap.forEach(child=>{
-    const b = child.val();
-    html = `<div>${b.name}：${b.price}</div>` + html;
-  });
-  document.getElementById("log").innerHTML = html;
-});
-
-// 出價
-function placeBid(){
-  const bid = parseInt(document.getElementById("bid").value);
-
-  db.ref("auction").once("value").then(snap=>{
-    const d = snap.val();
-
-    if(d.ended){
-      alert("已結標");
-      return;
-    }
-
-    if(bid < d.price + 10){
-      alert("至少加價10");
-      return;
-    }
-
-    let newTime = d.time;
-
-    // 最後1分鐘延長
-    if(d.time <= 60){
-      newTime = 60;
-    }
-
-    db.ref("auction").set({
-      price: bid,
-      name: username,
-      time: newTime,
-      item: d.item,
-      ended: false
-    });
-
-    db.ref("bids").push({
-      name: username,
-      price: bid,
-      time: Date.now()
-    });
-
-    document.getElementById("status").innerText = "出價成功";
-  });
-}
-
-// 倒數
-setInterval(()=>{
-  db.ref("auction").once("value").then(snap=>{
-    const d = snap.val();
-    if(!d || d.ended) return;
-
-    if(d.time > 0){
-      db.ref("auction/time").set(d.time - 1);
-    } else {
-      db.ref("auction/ended").set(true);
-    }
-  });
-},1000);
-
 </script>
 
 </body>
