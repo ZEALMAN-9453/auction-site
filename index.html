@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統（穩定版＋動畫）</title>
+<title>拍賣系統（最終穩定版）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -102,19 +102,6 @@ input{
   <div id="history"></div>
 </div>
 
-<div class="box">
-  <h3>管理員登入</h3>
-  <input id="adminPwd" type="password">
-  <button onclick="adminLogin()">登入</button>
-</div>
-
-<div class="box" id="adminPanel" style="display:none;">
-  <h3>5連拍設定</h3>
-  <div id="editor"></div>
-  <button onclick="saveItems()">儲存</button>
-  <button onclick="startAuction()">開始5連拍</button>
-</div>
-
 <div id="bidEffect"></div>
 <div id="winEffect"></div>
 
@@ -128,69 +115,9 @@ firebase.initializeApp({
 });
 const db=firebase.database();
 
-const ADMIN_PASSWORD="800430";
-
 // 登入
 function login(){
   firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
-}
-firebase.auth().onAuthStateChanged(u=>{
-  if(u) user.innerText="👤 "+(u.displayName||u.email);
-});
-
-// 管理員
-function adminLogin(){
-  if(adminPwd.value===ADMIN_PASSWORD){
-    adminPanel.style.display="block";
-    loadItems();
-  }
-}
-
-// 商品設定
-function loadItems(){
-  db.ref("items").once("value").then(s=>{
-    let items=s.val()||[
-      {item:"商品1",time:60},
-      {item:"商品2",time:60},
-      {item:"商品3",time:60},
-      {item:"商品4",time:60},
-      {item:"商品5",time:60}
-    ];
-
-    editor.innerHTML=items.map((it,i)=>`
-      <div>
-        <input id="name_${i}" value="${it.item}">
-        <input id="time_${i}" value="${it.time}">
-      </div>
-    `).join("");
-  });
-}
-
-function saveItems(){
-  let arr=[];
-  for(let i=0;i<5;i++){
-    arr.push({
-      item:document.getElementById("name_"+i).value,
-      time:parseInt(document.getElementById("time_"+i).value)
-    });
-  }
-  db.ref("items").set(arr);
-  alert("完成");
-}
-
-function startAuction(){
-  db.ref("items").once("value").then(s=>{
-    const items=s.val();
-    db.ref("currentIndex").set(0);
-
-    db.ref("auction").set({
-      item:items[0].item,
-      price:0,
-      name:"無",
-      endAt:Date.now()+items[0].time*1000,
-      ended:false
-    });
-  });
 }
 
 // 同步
@@ -216,14 +143,14 @@ setInterval(()=>{
   }
 },1000);
 
-// 出價動畫
+// 🔥 出價動畫
 function showBid(name,price){
   bidEffect.innerHTML=`🔥 ${name}<div class="money">$${price}</div>`;
   bidEffect.classList.add("show");
   setTimeout(()=>bidEffect.classList.remove("show"),800);
 }
 
-// 出價（安全版）
+// 出價（最關鍵修正版）
 function bid(){
   const u=firebase.auth().currentUser;
   if(!u)return alert("請登入");
@@ -244,9 +171,14 @@ function bid(){
       d.endAt+=30000;
     }
 
-    setTimeout(()=>showBid(name,val),50);
-
     return d;
+
+  },(err,committed,snap)=>{
+
+    if(!committed) return;
+
+    // 🔥 只有成功才動畫
+    showBid(name,val);
   });
 }
 
@@ -257,7 +189,7 @@ function showWin(txt){
   setTimeout(()=>winEffect.classList.remove("show"),1200);
 }
 
-// 結束（完整流程）
+// 結束
 function finishAuction(){
   db.ref("auction").transaction(d=>{
     if(!d||d.ended)return;
@@ -278,6 +210,7 @@ function finishAuction(){
 
       showWin(`🎉 ${d.name} 得標 ${d.price}`);
 
+      // 保留10筆
       db.ref("history").once("value").then(s=>{
         const arr=Object.entries(s.val()||{})
           .map(([k,v])=>({k,time:v.time}))
@@ -289,27 +222,6 @@ function finishAuction(){
         }
       });
     }
-
-    // 下一個
-    db.ref("currentIndex").once("value").then(s=>{
-      let idx=s.val()||0;
-      idx++;
-
-      db.ref("items").once("value").then(snap=>{
-        const items=snap.val();
-        if(idx>=items.length)return;
-
-        db.ref("currentIndex").set(idx);
-
-        db.ref("auction").set({
-          item:items[idx].item,
-          price:0,
-          name:"無",
-          endAt:Date.now()+items[idx].time*1000,
-          ended:false
-        });
-      });
-    });
   });
 }
 
