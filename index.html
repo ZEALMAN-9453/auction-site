@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統 最終完整版</title>
+<title>拍賣系統（穩定版＋動畫）</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -40,38 +40,44 @@ input{
   width:80%;
 }
 
-/* 🔥 出價動畫 */
+/* 出價動畫 */
 #bidEffect{
   position:fixed;
   top:50%;
   left:50%;
-  transform:translate(-50%,-50%) scale(0.5);
-  font-size:28px;
-  color:#00ffff;
+  transform:translate(-50%,-50%) scale(0.3);
+  font-size:46px;
+  font-weight:bold;
+  color:#fff;
   opacity:0;
   transition:.25s;
-  text-shadow:0 0 20px #00ffff;
+  text-align:center;
+  text-shadow:0 0 20px gold;
 }
 #bidEffect.show{
   opacity:1;
   transform:translate(-50%,-50%) scale(1.4);
 }
+#bidEffect .money{
+  display:block;
+  font-size:50px;
+  color:#ffd700;
+}
 
-/* 🔥 得標動畫 */
+/* 得標動畫 */
 #winEffect{
   position:fixed;
   top:40%;
   left:50%;
   transform:translate(-50%,-50%) scale(0.5);
-  font-size:32px;
+  font-size:30px;
   color:gold;
   opacity:0;
   transition:.3s;
-  text-shadow:0 0 20px gold;
 }
 #winEffect.show{
   opacity:1;
-  transform:translate(-50%,-50%) scale(1.4);
+  transform:translate(-50%,-50%) scale(1.2);
 }
 </style>
 </head>
@@ -106,7 +112,7 @@ input{
   <h3>5連拍設定</h3>
   <div id="editor"></div>
   <button onclick="saveItems()">儲存</button>
-  <button onclick="start()">開始5連拍</button>
+  <button onclick="startAuction()">開始5連拍</button>
 </div>
 
 <div id="bidEffect"></div>
@@ -140,7 +146,7 @@ function adminLogin(){
   }
 }
 
-// 載入商品
+// 商品設定
 function loadItems(){
   db.ref("items").once("value").then(s=>{
     let items=s.val()||[
@@ -160,7 +166,6 @@ function loadItems(){
   });
 }
 
-// 儲存
 function saveItems(){
   let arr=[];
   for(let i=0;i<5;i++){
@@ -173,11 +178,11 @@ function saveItems(){
   alert("完成");
 }
 
-// 開始
-function start(){
+function startAuction(){
   db.ref("items").once("value").then(s=>{
     const items=s.val();
     db.ref("currentIndex").set(0);
+
     db.ref("auction").set({
       item:items[0].item,
       price:0,
@@ -194,9 +199,9 @@ db.ref("auction").on("value",snap=>{
   current=snap.val();
   if(!current)return;
 
-  document.getElementById("item").innerText=current.item;
-  document.getElementById("price").innerText=current.price;
-  document.getElementById("bidder").innerText=current.name;
+  item.innerText=current.item;
+  price.innerText=current.price;
+  bidder.innerText=current.name;
 });
 
 // 倒數
@@ -207,18 +212,18 @@ setInterval(()=>{
   time.innerText=t;
 
   if(t<=0 && !current.ended){
-    finish();
+    finishAuction();
   }
 },1000);
 
-// 🔥 出價動畫
+// 出價動畫
 function showBid(name,price){
-  bidEffect.innerText=`⚡ ${name} 出價 ${price}`;
+  bidEffect.innerHTML=`🔥 ${name}<div class="money">$${price}</div>`;
   bidEffect.classList.add("show");
   setTimeout(()=>bidEffect.classList.remove("show"),800);
 }
 
-// 出價
+// 出價（安全版）
 function bid(){
   const u=firebase.auth().currentUser;
   if(!u)return alert("請登入");
@@ -226,34 +231,34 @@ function bid(){
   const val=parseInt(bidInput.value);
   if(isNaN(val))return;
 
+  const name=u.displayName||u.email;
+
   db.ref("auction").transaction(d=>{
     if(!d)return d;
     if(val<=d.price)return;
 
     d.price=val;
-    d.name=u.displayName||u.email;
+    d.name=name;
 
-    // 🔥 最後10秒延長
     if((d.endAt-Date.now())/1000<=10){
       d.endAt+=30000;
     }
 
+    setTimeout(()=>showBid(name,val),50);
+
     return d;
-  }).then(()=>{
-    showBid(u.displayName||u.email,val); // 🔥 這就是你要的動畫
   });
 }
 
-// 🔥 得標動畫
+// 得標動畫
 function showWin(txt){
   winEffect.innerText=txt;
   winEffect.classList.add("show");
-  setTimeout(()=>winEffect.classList.remove("show"),1500);
+  setTimeout(()=>winEffect.classList.remove("show"),1200);
 }
 
-// 結束
-function finish(){
-
+// 結束（完整流程）
+function finishAuction(){
   db.ref("auction").transaction(d=>{
     if(!d||d.ended)return;
     d.ended=true;
@@ -263,7 +268,7 @@ function finish(){
 
     const d=snap.val();
 
-    if(d.price>0 && d.name!=="無"){
+    if(d.price>0){
       db.ref("history").push({
         item:d.item,
         name:d.name,
@@ -273,29 +278,26 @@ function finish(){
 
       showWin(`🎉 ${d.name} 得標 ${d.price}`);
 
-      // 保留10筆
       db.ref("history").once("value").then(s=>{
-        const keys=Object.keys(s.val()||{});
-        if(keys.length>10){
-          keys.sort().slice(0,keys.length-10)
-          .forEach(k=>db.ref("history/"+k).remove());
+        const arr=Object.entries(s.val()||{})
+          .map(([k,v])=>({k,time:v.time}))
+          .sort((a,b)=>a.time-b.time);
+
+        if(arr.length>10){
+          arr.slice(0,arr.length-10)
+          .forEach(x=>db.ref("history/"+x.k).remove());
         }
       });
-
-    }else{
-      showWin("❌ 流標");
     }
 
+    // 下一個
     db.ref("currentIndex").once("value").then(s=>{
       let idx=s.val()||0;
       idx++;
 
       db.ref("items").once("value").then(snap=>{
         const items=snap.val();
-        if(idx>=items.length){
-          showWin("🏁 結束");
-          return;
-        }
+        if(idx>=items.length)return;
 
         db.ref("currentIndex").set(idx);
 
@@ -308,7 +310,6 @@ function finish(){
         });
       });
     });
-
   });
 }
 
