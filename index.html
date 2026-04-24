@@ -9,27 +9,70 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
 <style>
-body{margin:0;font-family:Arial;background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;padding:20px;}
-.box{background:#222;padding:20px;margin:10px;width:360px;border-radius:12px;text-align:center;}
-button{padding:10px 20px;border:none;border-radius:20px;background:#00bfff;color:white;}
-input{padding:8px;margin:5px;width:80%;}
+body{
+  margin:0;
+  font-family:Arial;
+  background:#111;
+  color:#fff;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:20px;
+}
+.box{
+  background:#222;
+  padding:20px;
+  margin:10px;
+  width:360px;
+  border-radius:12px;
+  text-align:center;
+}
+button{
+  padding:10px 20px;
+  border:none;
+  border-radius:20px;
+  background:#00bfff;
+  color:white;
+}
+input{
+  padding:8px;
+  margin:5px;
+  width:80%;
+}
 
 /* 出價動畫 */
 #bidEffect{
- position:fixed;top:50%;left:50%;
- transform:translate(-50%,-50%) scale(0.3);
- font-size:42px;opacity:0;transition:.25s;text-align:center;
+  position:fixed;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%) scale(0.3);
+  font-size:42px;
+  opacity:0;
+  transition:.25s;
 }
-#bidEffect.show{opacity:1;transform:translate(-50%,-50%) scale(1.4);}
-#bidEffect .money{font-size:48px;color:gold;}
+#bidEffect.show{
+  opacity:1;
+  transform:translate(-50%,-50%) scale(1.4);
+}
+#bidEffect .money{
+  font-size:48px;
+  color:gold;
+}
 
 /* 得標動畫 */
 #winEffect{
- position:fixed;top:40%;left:50%;
- transform:translate(-50%,-50%) scale(0.5);
- font-size:30px;opacity:0;transition:.3s;
+  position:fixed;
+  top:40%;
+  left:50%;
+  transform:translate(-50%,-50%) scale(0.5);
+  font-size:30px;
+  opacity:0;
+  transition:.3s;
 }
-#winEffect.show{opacity:1;transform:translate(-50%,-50%) scale(1.2);}
+#winEffect.show{
+  opacity:1;
+  transform:translate(-50%,-50%) scale(1.2);
+}
 </style>
 </head>
 
@@ -69,197 +112,217 @@ input{padding:8px;margin:5px;width:80%;}
 <div id="winEffect"></div>
 
 <script>
+
 firebase.initializeApp({
- apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
- authDomain:"auction-app-e04f8.firebaseapp.com",
- databaseURL:"https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app"
+  apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
+  authDomain:"auction-app-e04f8.firebaseapp.com",
+  databaseURL:"https://auction-app-e04f8-default-rtdb.asia-southeast1.firebasedatabase.app"
 });
-const db=firebase.database();
+
+const db = firebase.database();
 const ADMIN_PASSWORD="800430";
 
 // 登入
 function login(){
- firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
 }
 firebase.auth().onAuthStateChanged(u=>{
- if(u) user.innerText=u.displayName;
+  if(u) user.innerText=u.displayName;
 });
 
 // 管理員
 function adminLogin(){
- if(adminPwd.value===ADMIN_PASSWORD){
-  adminPanel.style.display="block";
-  loadItems();
- }
+  if(adminPwd.value===ADMIN_PASSWORD){
+    adminPanel.style.display="block";
+    loadItems();
+  }
 }
 
-// 商品設定
+// 載入商品
 function loadItems(){
- db.ref("items").once("value").then(s=>{
-  let items=s.val()||[
-   {item:"商品1",time:60},
-   {item:"商品2",time:60},
-   {item:"商品3",time:60},
-   {item:"商品4",time:60},
-   {item:"商品5",time:60}
-  ];
-  editor.innerHTML=items.map((it,i)=>`
-   <input id="n${i}" value="${it.item}">
-   <input id="t${i}" value="${it.time}">
-  `).join("<br>");
- });
+  db.ref("items").once("value").then(s=>{
+    let items=s.val()||[
+      {item:"商品1",time:60},
+      {item:"商品2",time:60},
+      {item:"商品3",time:60},
+      {item:"商品4",time:60},
+      {item:"商品5",time:60}
+    ];
+
+    editor.innerHTML=items.map((it,i)=>`
+      <input id="n${i}" value="${it.item}">
+      <input id="t${i}" value="${it.time}">
+    `).join("<br>");
+  });
 }
 
 function saveItems(){
- let arr=[];
- for(let i=0;i<5;i++){
-  arr.push({
-   item:document.getElementById("n"+i).value,
-   time:parseInt(document.getElementById("t"+i).value)
-  });
- }
- db.ref("items").set(arr);
+  let arr=[];
+  for(let i=0;i<5;i++){
+    arr.push({
+      item:document.getElementById("n"+i).value,
+      time:parseInt(document.getElementById("t"+i).value)
+    });
+  }
+  db.ref("items").set(arr);
 }
 
+// 開始拍賣
 function start(){
- db.ref("items").once("value").then(s=>{
-  let items=s.val();
-  db.ref("currentIndex").set(0);
-  db.ref("auction").set({
-   item:items[0].item,
-   price:0,
-   name:"無",
-   endAt:Date.now()+items[0].time*1000,
-   ended:false
+  db.ref("items").once("value").then(s=>{
+    let items=s.val();
+    db.ref("currentIndex").set(0);
+
+    db.ref("auction").set({
+      item:items[0].item,
+      price:0,
+      name:"無",
+      endAt:Date.now()+items[0].time*1000,
+      ended:false
+    });
   });
- });
 }
 
 // 同步
 let current=null;
 db.ref("auction").on("value",snap=>{
- current=snap.val();
- if(!current)return;
- item.innerText=current.item;
- price.innerText=current.price;
- bidder.innerText=current.name;
+  current=snap.val();
+  if(!current)return;
+
+  item.innerText=current.item;
+  price.innerText=current.price;
+  bidder.innerText=current.name;
 });
 
 // 倒數
 setInterval(()=>{
- if(!current)return;
- let t=Math.max(0,Math.floor((current.endAt-Date.now())/1000));
- time.innerText=t;
- if(t<=0 && !current.ended) finish();
+  if(!current)return;
+
+  let t=Math.max(0,Math.floor((current.endAt-Date.now())/1000));
+  time.innerText=t;
+
+  if(t<=0 && !current.ended){
+    finish();
+  }
 },1000);
 
 // 出價動畫
 function showBid(n,p){
- bidEffect.innerHTML=`🔥 ${n}<div class="money">$${p}</div>`;
- bidEffect.classList.add("show");
- setTimeout(()=>bidEffect.classList.remove("show"),800);
+  bidEffect.innerHTML=`🔥 ${n}<div class="money">$${p}</div>`;
+  bidEffect.classList.add("show");
+  setTimeout(()=>bidEffect.classList.remove("show"),800);
 }
 
 // 出價（關鍵修正）
 function bid(){
- let u=firebase.auth().currentUser;
- if(!u)return;
+  let u=firebase.auth().currentUser;
+  if(!u)return;
 
- let val=parseInt(bidInput.value);
- if(isNaN(val))return;
+  let val=parseInt(bidInput.value);
+  if(isNaN(val))return;
 
- let name=u.displayName||u.email;
+  let name=u.displayName||u.email;
 
- db.ref("auction").transaction(d=>{
-  if(!d) return d;
-  if(val<=d.price) return;
+  db.ref("auction").transaction(d=>{
+    if(!d)return d;
+    if(val<=d.price)return;
 
-  d.price=val;
-  d.name=name;
+    d.price=val;
+    d.name=name;
 
-  if((d.endAt-Date.now())/1000<=10){
-   d.endAt+=30000;
-  }
+    if((d.endAt-Date.now())/1000<=10){
+      d.endAt+=30000;
+    }
 
-  return d;
+    return d;
 
- },(e,committed)=>{
-  if(committed) showBid(name,val);
- });
+  },(err,committed)=>{
+    if(committed) showBid(name,val);
+  });
 }
 
 // 得標動畫
 function showWin(t){
- winEffect.innerText=t;
- winEffect.classList.add("show");
- setTimeout(()=>winEffect.classList.remove("show"),1200);
+  winEffect.innerText=t;
+  winEffect.classList.add("show");
+  setTimeout(()=>winEffect.classList.remove("show"),1200);
 }
 
 // 結束
 function finish(){
- db.ref("auction").transaction(d=>{
-  if(!d||d.ended)return;
-  d.ended=true;
-  return d;
- },(e,ok,snap)=>{
-  if(!ok)return;
-  let d=snap.val();
+  db.ref("auction").transaction(d=>{
+    if(!d||d.ended)return;
+    d.ended=true;
+    return d;
+  },(e,ok,snap)=>{
+    if(!ok)return;
 
-  if(d.price>0){
-   db.ref("history").push({
-    item:d.item,
-    name:d.name,
-    price:d.price,
-    time:Date.now()
-   });
+    let d=snap.val();
 
-   showWin(`${d.name} 得標 ${d.price}`);
+    if(d.price>0){
+      db.ref("history").push({
+        item:d.item,
+        name:d.name,
+        price:d.price,
+        time:Date.now()
+      });
 
-   db.ref("history").once("value").then(s=>{
-    let arr=Object.entries(s.val()||{})
-     .map(([k,v])=>({k,time:v.time}))
-     .sort((a,b)=>a.time-b.time);
+      showWin(`${d.name} 得標 ${d.price}`);
 
-    if(arr.length>10){
-     arr.slice(0,arr.length-10)
-      .forEach(x=>db.ref("history/"+x.k).remove());
+      // 保留10筆
+      db.ref("history").once("value").then(s=>{
+        let arr=Object.entries(s.val()||{})
+          .map(([k,v])=>({k,time:v.time}))
+          .sort((a,b)=>a.time-b.time);
+
+        if(arr.length>10){
+          arr.slice(0,arr.length-10)
+            .forEach(x=>db.ref("history/"+x.k).remove());
+        }
+      });
     }
-   });
-  }
 
-  // 下一個
-  db.ref("currentIndex").once("value").then(s=>{
-   let idx=s.val()||0; idx++;
+    // 下一個
+    db.ref("currentIndex").once("value").then(s=>{
+      let idx=s.val()||0;
+      idx++;
 
-   db.ref("items").once("value").then(snap=>{
-    let items=snap.val();
-    if(idx>=items.length)return;
+      db.ref("items").once("value").then(snap=>{
+        let items=snap.val();
+        if(idx>=items.length)return;
 
-    db.ref("currentIndex").set(idx);
+        db.ref("currentIndex").set(idx);
 
-    db.ref("auction").set({
-     item:items[idx].item,
-     price:0,
-     name:"無",
-     endAt:Date.now()+items[idx].time*1000,
-     ended:false
+        db.ref("auction").set({
+          item:items[idx].item,
+          price:0,
+          name:"無",
+          endAt:Date.now()+items[idx].time*1000,
+          ended:false
+        });
+      });
     });
-   });
   });
-
- });
 }
 
-// 歷史
+// 🔥 修正顯示問題（重點）
 db.ref("history").on("value",snap=>{
- let data=snap.val();
- if(!data){history.innerHTML="無";return;}
+  const data=snap.val();
 
- let arr=Object.values(data).sort((a,b)=>b.time-a.time);
- history.innerHTML=arr.slice(0,10)
-  .map(h=>`<p>${h.item}-${h.name}(${h.price})</p>`)
-  .join("");
+  if(!data){
+    document.getElementById("history").innerHTML="尚無紀錄";
+    return;
+  }
+
+  const arr=Object.values(data)
+    .sort((a,b)=>b.time-a.time);
+
+  document.getElementById("history").innerHTML =
+    arr.slice(0,10)
+    .map(h=>`<p>${h.item} - ${h.name} (${h.price})</p>`)
+    .join("");
 });
+
 </script>
 
 </body>
