@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>拍賣系統 最終穩定版</title>
+<title>拍賣系統 最終完整版</title>
 
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
@@ -12,21 +12,28 @@
 body{
   margin:0;
   font-family:Arial;
-  background:#111;
+
+  /* 🔥 背景圖（穩定版本） */
+  background: url("https://images.unsplash.com/photo-1605902711622-cfb43c4437d1?q=80&w=2070&auto=format&fit=crop") no-repeat center center fixed;
+  background-size: cover;
+
   color:#fff;
   display:flex;
   flex-direction:column;
   align-items:center;
   padding:20px;
 }
+
 .box{
-  background:#222;
+  background:rgba(0,0,0,0.7);
+  backdrop-filter: blur(8px);
   padding:20px;
   margin:10px;
   width:360px;
   border-radius:12px;
   text-align:center;
 }
+
 button{
   padding:10px 20px;
   border:none;
@@ -34,6 +41,7 @@ button{
   background:#00bfff;
   color:white;
 }
+
 input{
   padding:8px;
   margin:5px;
@@ -113,6 +121,7 @@ input{
 
 <script>
 
+// Firebase
 firebase.initializeApp({
   apiKey:"AIzaSyAgjEi_uRKn4wgJcl4OfbxtzitysJ_APIU",
   authDomain:"auction-app-e04f8.firebaseapp.com",
@@ -167,7 +176,7 @@ function saveItems(){
   db.ref("items").set(arr);
 }
 
-// 開始拍賣
+// 開始
 function start(){
   db.ref("items").once("value").then(s=>{
     let items=s.val();
@@ -213,7 +222,7 @@ function showBid(n,p){
   setTimeout(()=>bidEffect.classList.remove("show"),800);
 }
 
-// 出價（關鍵修正）
+// 出價
 function bid(){
   let u=firebase.auth().currentUser;
   if(!u)return;
@@ -269,7 +278,6 @@ function finish(){
 
       showWin(`${d.name} 得標 ${d.price}`);
 
-      // 保留10筆
       db.ref("history").once("value").then(s=>{
         let arr=Object.entries(s.val()||{})
           .map(([k,v])=>({k,time:v.time}))
@@ -282,10 +290,8 @@ function finish(){
       });
     }
 
-    // 下一個
     db.ref("currentIndex").once("value").then(s=>{
-      let idx=s.val()||0;
-      idx++;
+      let idx=s.val()||0; idx++;
 
       db.ref("items").once("value").then(snap=>{
         let items=snap.val();
@@ -305,7 +311,7 @@ function finish(){
   });
 }
 
-// 🔥 修正顯示問題（重點）
+// 顯示紀錄
 db.ref("history").on("value",snap=>{
   const data=snap.val();
 
